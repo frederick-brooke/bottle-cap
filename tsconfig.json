@@ -19,7 +19,14 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@cli/*": ["./src/cli/*"],
+      "@proxy/*": ["./src/proxy/*"],
+      "@storage/*": ["./src/storage/*"],
+      "@replay/*": ["./src/replay/*"],
+      "@diff/*": ["./src/diff/*"],
+      "@api/*": ["./src/api/*"],
+      "@web/*": ["./src/web/*"]
     }
   },
   "include": [

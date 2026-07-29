@@ -1,26 +1,50 @@
 {
   "name": "bottle-cap",
   "version": "0.1.0",
+  "description": "Incident Replay Tool - Capture production HTTP traffic via proxy, store it, replay against staging to verify fixes before deployment.",
   "private": true,
+  "bin": {
+    "bottlecap": "./src/cli/index.ts"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:api": "tsx watch src/api/server.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cli": "tsx src/cli/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "db:migrate": "tsx src/cli/index.ts migrate"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.2",
+    "chalk": "^4.1.2",
+    "commander": "^15.0.0",
+    "deep-diff": "^1.0.2",
+    "express": "^5.2.1",
+    "http-proxy": "^1.18.1",
+    "inquirer": "^9.2.0",
+    "minio": "^8.0.7",
     "next": "16.2.12",
+    "ora": "^9.4.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/http-proxy": "^1.17.17",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
