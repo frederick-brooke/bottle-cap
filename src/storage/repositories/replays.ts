@@ -47,6 +47,12 @@ export function listReplays(options?: { limit?: number; offset?: number }): Repl
   return rows.map(mapRowToReplay)
 }
 
+export function listReplaysByCapture(captureId: string): Replay[] {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT * FROM replays WHERE capture_id = ? ORDER BY created_at DESC').all(captureId) as Record<string, unknown>[]
+  return rows.map(mapRowToReplay)
+}
+
 export function updateReplayStatus(id: string, status: Replay['status']): Replay | null {
   const db = getDatabase()
   const updates: string[] = ['status = ?']

@@ -61,6 +61,23 @@ export function incrementRequestCount(id: string): void {
   db.prepare('UPDATE captures SET request_count = request_count + 1 WHERE id = ?').run(id)
 }
 
+export function deleteCapture(id: string): boolean {
+  const db = getDatabase()
+  db.pragma('foreign_keys = OFF')
+  try {
+    db.transaction(() => {
+      db.prepare('DELETE FROM replay_results WHERE replay_id IN (SELECT id FROM replays WHERE capture_id = ?)').run(id)
+      db.prepare('DELETE FROM replays WHERE capture_id = ?').run(id)
+      db.prepare('DELETE FROM http_requests WHERE capture_id = ?').run(id)
+      const result = db.prepare('DELETE FROM captures WHERE id = ?').run(id)
+      return result.changes > 0
+    })()
+    return true
+  } finally {
+    db.pragma('foreign_keys = ON')
+  }
+}
+
 function mapRowToCapture(row: Record<string, unknown>): Capture {
   return {
     id: row.id as string,

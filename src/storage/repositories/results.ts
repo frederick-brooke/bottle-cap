@@ -32,7 +32,7 @@ export function createResult(input: CreateResultInput): ReplayResult {
     input.original_latency_ms,
     input.replayed_latency_ms,
     input.body_diff_summary ? JSON.stringify(input.body_diff_summary) : null,
-    input.body_identical,
+    input.body_identical ? 1 : 0,
     input.truncated ? 1 : 0,
     input.error ?? null,
   )
@@ -67,6 +67,28 @@ export function getReplaySummary(replayId: string): ReplaySummary | null {
     errors: row.errors as number,
     avg_latency_delta_ms: row.avg_latency_delta_ms as number | null,
   }
+}
+
+export function getReplaySummariesByReplayIds(replayIds: string[]): Map<string, ReplaySummary> {
+  const db = getDatabase()
+  if (replayIds.length === 0) return new Map()
+  const placeholders = replayIds.map(() => '?').join(', ')
+  const rows = db.prepare(`SELECT * FROM replay_summary WHERE replay_id IN (${placeholders})`).all(...replayIds) as Record<string, unknown>[]
+  const map = new Map<string, ReplaySummary>()
+  for (const row of rows) {
+    map.set(row.replay_id as string, {
+      replay_id: row.replay_id as string,
+      name: row.name as string | null,
+      status: row.status as string,
+      mode: row.mode as string,
+      total: row.total as number,
+      identical: row.identical as number,
+      status_changed: row.status_changed as number,
+      errors: row.errors as number,
+      avg_latency_delta_ms: row.avg_latency_delta_ms as number | null,
+    })
+  }
+  return map
 }
 
 function mapRowToResult(row: Record<string, unknown>): ReplayResult {

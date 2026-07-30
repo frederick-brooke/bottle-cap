@@ -15,7 +15,7 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 - **Phase 2 ✅** — Capture proxy (http-proxy, sanitization, sampling, S3/SQLite fallback)
 - **Phase 3 ✅** — Replay engine (paced/burst/throttled modes, diff engine, CLI integration)
 - **Phase 4 ✅** — CLI polish + replay hardening (colored output, --json flag, migration tracking, bug fixes)
-- **Phase 5** — API layer (not started)
+- **Phase 5 ✅** — API layer (Express REST API, auth, 10 endpoints, supertest tests)
 - **Phase 6** — Web dashboard (debug UI done, full dashboard not started)
 
 ## Architecture
@@ -40,7 +40,13 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
   - `body-diff.ts`: Recursive JSON body comparison with `maxDepth` limit (default 64)
   - `latency-diff.ts`: Latency delta and percentage analysis with NaN/Infinity guards
   - `comparator.ts`: Orchestrates body + latency comparison
-- **API** (`src/api/`): Express REST API for programmatic access
+- **API** (`src/api/`): Express 5 REST API for programmatic access
+  - `server.ts`: App factory + dev server entry point (`npm run dev:api`)
+  - `middleware/auth.ts`: API key auth with timing-safe comparison (optional via `BOTTLECAP_API_KEY`)
+  - `routes/captures.ts`: Create (with proxy start), list, get, stop
+  - `routes/replays.ts`: Create (fire-and-forget 202), list, get, cancel
+  - `routes/results.ts`: Get replay results + summary
+  - `routes/stats.ts`: Capture statistics with batch query optimization
 - **Web UI** (`src/web/`): Next.js dashboard for visualization
 - **Debug UI** (`src/app/debug/`): Capture proxy debug console
 
@@ -59,7 +65,7 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 ```bash
 npm run cli -- <command>     # Run CLI commands
 npm run dev                  # Start Next.js dev server (includes debug UI)
-npm run dev:api              # Start Express API server (not yet implemented)
+npm run dev:api              # Start Express API server
 npm test                     # Run Vitest tests
 npm run test:run             # Run tests once (CI mode)
 npm run lint                 # ESLint

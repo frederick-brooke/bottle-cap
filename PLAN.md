@@ -226,7 +226,7 @@ GROUP BY r.id;
 | **2. Capture Proxy** | Week 2 | Working proxy that captures traffic to SQLite + S3 | ✅ Complete |
 | **3. Replay Engine** | Week 3-4 | Paced replay mode, basic diff comparison | ✅ Complete |
 | **4. CLI Polish** | Week 5 | All CLI commands, formatting, progress indicators, replay hardening | ✅ Complete |
-| **5. API Layer** | Week 6 | REST API for programmatic access | |
+| **5. API Layer** | Week 6 | REST API for programmatic access | ✅ Complete |
 | **6. Web Dashboard** | Week 7-8 | Next.js UI with replay visualization | Partial (debug UI done) |
 
 ---
@@ -421,6 +421,81 @@ export default {
 - **151 unit tests passing** (up from 107 in Phase 3)
 - **77 E2E validations passing**
 - **Lint clean**
+
+---
+
+## Phase 5: REST API Layer ✅ Complete
+
+### Deliverables
+- Express 5 REST API for programmatic access to all Bottle-Cap features
+- API key authentication middleware (timing-safe comparison)
+- 10 endpoints across captures, replays, results, and stats
+- Supertest-based in-process test suite
+- Full API documentation in `docs/API.md`
+
+### Endpoints
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| `POST` | `/api/captures` | 201 | Create capture + start proxy |
+| `GET` | `/api/captures` | 200 | List captures with pagination |
+| `GET` | `/api/captures/:id` | 200 | Get capture details |
+| `DELETE` | `/api/captures/:id` | 200 | Stop active capture |
+| `POST` | `/api/replays` | 202 | Create replay (fire-and-forget) |
+| `GET` | `/api/replays` | 200 | List replays with pagination |
+| `GET` | `/api/replays/:id` | 200 | Get replay + summary |
+| `POST` | `/api/replays/:id/cancel` | 200 | Cancel running replay |
+| `GET` | `/api/results/:replayId` | 200 | Get replay results + summary |
+| `GET` | `/api/stats/:captureId` | 200 | Capture statistics |
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/api/server.ts` | Express app factory + dev server entry point |
+| `src/api/middleware/auth.ts` | API key auth (timing-safe, optional) |
+| `src/api/routes/captures.ts` | Capture CRUD + proxy management |
+| `src/api/routes/replays.ts` | Replay CRUD + fire-and-forget execution |
+| `src/api/routes/results.ts` | Replay results + summary |
+| `src/api/routes/stats.ts` | Capture-level statistics |
+| `docs/API.md` | Full API documentation with examples |
+| `tests/api/server.test.ts` | Server lifecycle tests |
+| `tests/api/middleware/auth.test.ts` | Auth middleware tests |
+| `tests/api/routes/captures.test.ts` | Capture endpoint tests |
+| `tests/api/routes/replays.test.ts` | Replay endpoint tests |
+| `tests/api/routes/results.test.ts` | Results endpoint tests |
+| `tests/api/routes/stats.test.ts` | Stats endpoint tests |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `src/storage/repositories/captures.ts` | Added `deleteCapture()` for cleanup (transaction-wrapped) |
+| `src/storage/repositories/replays.ts` | Added `listReplaysByCapture()` for filtered queries |
+| `src/storage/repositories/results.ts` | Fixed `body_identical` boolean→integer conversion; added `getReplaySummariesByReplayIds()` for batch queries |
+| `src/replay/sender.ts` | Fixed `rewriteUrl()` to handle relative paths (e.g., `/api/users`) from proxy captures |
+
+### Key Design Decisions
+- **Fire-and-forget replays**: `POST /api/replays` returns 202 immediately; replay runs in background
+- **Proxy auto-start**: `POST /api/captures` creates record + starts proxy in one call
+- **Orphan cleanup**: If proxy start fails after DB insert, capture record is deleted
+- **Optional auth**: `BOTTLECAP_API_KEY` env var enables auth; unset = no auth (local dev)
+- **Express 5**: Native async error handling, `req.url` parsing for search params
+
+### Tests
+- **47 API tests** (auth, captures, replays, results, stats, server)
+- **198 total tests passing** (up from 151 in Phase 4)
+- **Lint clean**
+
+### Known Limitations
+
+| # | Severity | Area | Limitation | Notes |
+|---|----------|------|------------|-------|
+| 1 | LOW | API | Race condition on concurrent `DELETE /api/captures/:id` | Two simultaneous requests could both see `active` status, both attempt to stop the proxy, and both update status. SQLite lacks `SELECT FOR UPDATE`. Acceptable for single-server deployment; would need an advisory lock or queue for multi-instance. |
+| 2 | LOW | API | `GET /api/results/:replayId` returns `summary: null` when replay has no results | The `replay_summary` SQL VIEW returns no row for replays with zero results. The response shape is correct (`{ results: [], summary: null }`) but could be more consistent by returning an empty summary object. |
+| 3 | LOW | API | No request body size limit beyond Express default | Express 5 defaults to ~100KB JSON bodies. For most API use cases this is fine, but large payloads (e.g., batch operations) would need explicit `express.json({ limit: '1mb' })` configuration. |
+| 4 | LOW | API | Fire-and-forget replays have no retry on process crash | If the API server crashes mid-replay, the replay status remains `running` forever. There is no heartbeat or recovery mechanism. A future improvement could add a startup scan to reset stale `running` replays to `failed`. |
+| 5 | LOW | API | Stats endpoint limited to 100 replays per capture | `GET /api/stats/:captureId` fetches at most 100 replays. Captures with more replays will have older ones omitted from stats. Could be paginated or use a summary table in the future. |
 
 ---
 

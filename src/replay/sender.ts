@@ -19,11 +19,17 @@ export async function getRequestBody(request: HttpRequest): Promise<Buffer | nul
 }
 
 export function rewriteUrl(originalUrl: string, targetUrl: string): string {
-  const original = new URL(originalUrl)
   const target = new URL(targetUrl)
-  original.protocol = target.protocol
-  original.host = target.host
-  return original.toString()
+  try {
+    const original = new URL(originalUrl)
+    original.protocol = target.protocol
+    original.host = target.host
+    return original.toString()
+  } catch {
+    const base = `${target.protocol}//${target.host}`
+    const original = new URL(originalUrl, base)
+    return original.toString()
+  }
 }
 
 export function createSender(options: ReplayOptions) {
