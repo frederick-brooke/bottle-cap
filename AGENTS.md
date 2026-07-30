@@ -13,8 +13,8 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 ## Implementation Status
 - **Phase 1 ✅** — Core infrastructure (DB, types, CLI skeleton, storage repos)
 - **Phase 2 ✅** — Capture proxy (http-proxy, sanitization, sampling, S3/SQLite fallback)
-- **Phase 3** — Replay engine (not started)
-- **Phase 4** — CLI polish (not started)
+- **Phase 3 ✅** — Replay engine (paced/burst/throttled modes, diff engine, CLI integration)
+- **Phase 4** — CLI polish + replay hardening (not started)
 - **Phase 5** — API layer (not started)
 - **Phase 6** — Web dashboard (debug UI done, full dashboard not started)
 
@@ -23,7 +23,13 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 - **Proxy** (`src/proxy/`): HTTP proxy that intercepts and records traffic
 - **Storage** (`src/storage/`): SQLite database + S3/MinIO object storage
 - **Replay** (`src/replay/`): Engine to replay captured requests (paced, burst, throttled)
+  - `sender.ts`: HTTP request sender with URL rewriting, body retrieval, timeout handling
+  - `engine.ts`: Orchestrator — loads requests from DB, executes mode, records diff results
+  - `modes/`: Paced (original timing), burst (max concurrency), throttled (rate-limited)
 - **Diff** (`src/diff/`): Compare original vs replayed responses
+  - `body-diff.ts`: Recursive JSON body comparison (added/removed/changed fields)
+  - `latency-diff.ts`: Latency delta and percentage analysis
+  - `comparator.ts`: Orchestrates body + latency comparison
 - **API** (`src/api/`): Express REST API for programmatic access
 - **Web UI** (`src/web/`): Next.js dashboard for visualization
 - **Debug UI** (`src/app/debug/`): Capture proxy debug console
