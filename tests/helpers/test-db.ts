@@ -27,8 +27,10 @@ export function cleanupTestDb(db: Database.Database): void {
 }
 
 export function clearTestDb(db: Database.Database): void {
+  db.pragma('foreign_keys = OFF')
   db.exec('DELETE FROM replay_results')
   db.exec('DELETE FROM replays')
   db.exec('DELETE FROM http_requests')
   db.exec('DELETE FROM captures')
+  db.pragma('foreign_keys = ON')
 }

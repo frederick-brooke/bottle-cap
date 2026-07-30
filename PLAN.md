@@ -203,7 +203,7 @@ GROUP BY r.id;
 |-------|----------|--------------|--------|
 | **1. Core Infrastructure** | Week 1 | Project setup, DB schema, basic CLI skeleton | ✅ Complete |
 | **2. Capture Proxy** | Week 2 | Working proxy that captures traffic to SQLite + S3 | ✅ Complete |
-| **3. Replay Engine** | Week 3-4 | Paced replay mode, basic diff comparison | |
+| **3. Replay Engine** | Week 3-4 | Paced replay mode, basic diff comparison | ✅ Complete |
 | **4. CLI Polish** | Week 5 | All CLI commands, formatting, progress indicators | |
 | **5. API Layer** | Week 6 | REST API for programmatic access | |
 | **6. Web Dashboard** | Week 7-8 | Next.js UI with replay visualization | Partial (debug UI done) |
@@ -315,6 +315,24 @@ export default {
   }
 }
 ```
+
+---
+
+## Phase 4: CLI Polish + Replay Hardening
+
+### Deliverables
+- All CLI commands fully polished with formatting and progress indicators
+- Replay engine hardening from Phase 3 code review
+
+### Code Review Carry-Forward (from Phase 3 review)
+
+| # | Severity | Area | Issue | Notes |
+|---|----------|------|-------|-------|
+| 1 | HIGH | `sender.ts` | TLS `rejectUnauthorized: false` hardcoded — no config opt-out | Add `replay.rejectUnauthorized` to `Config`, default `true`, allow `false` for self-signed staging certs |
+| 2 | HIGH | `cli/capture.ts` | `--daemon` mode: proxy process exits immediately after writing PID file | Investigate event loop draining — proxy server likely not keeping the process alive in daemon mode. Non-daemon mode works fine. |
+| 3 | MEDIUM | `sender.ts` | Silent 1MB response truncation — truncated body stored as complete, causes false diff positives | Add `truncated: boolean` flag to `SendResult`, set when `responseSize > MAX_RESPONSE_BODY`, include in diff summary |
+| 4 | MEDIUM | `body-diff.ts` | `computeDiff` recursive with no depth limit — stack overflow on deeply nested JSON | Add `maxDepth` parameter (default 64), stop recursing beyond it |
+| 5 | LOW | `latency-diff.ts` | `percentageChange` is `NaN` when `originalMs` is `NaN` (corrupt DB row) | Guard with `Number.isNaN()` check, return `0` or `null` |
 
 ---
 

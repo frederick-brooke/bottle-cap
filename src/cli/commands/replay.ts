@@ -1,7 +1,9 @@
 import type { Command } from 'commander'
 import chalk from 'chalk'
+import ora from 'ora'
 import { createReplay, getReplay, listReplays, updateReplayStatus } from '../../storage/repositories/replays'
-import { getReplaySummary } from '../../storage/repositories/results'
+import { getReplaySummary, getResultsByReplay } from '../../storage/repositories/results'
+import { runReplay } from '../../replay/engine'
 import { formatReplay, formatReplaySummary, formatTable } from '../utils/format'
 
 export function registerReplayCommand(program: Command): void {
@@ -17,22 +19,69 @@ export function registerReplayCommand(program: Command): void {
     .option('-n, --name <name>', 'Replay name')
     .option('-m, --mode <mode>', 'Replay mode (paced|burst|throttled)', 'paced')
     .option('-r, --rate-limit <n>', 'Rate limit for throttled mode')
-    .action((opts) => {
+    .action(async (opts) => {
+      let spinner: ora.Ora | null = null
+      let handleSigint: (() => void) | null = null
       try {
+        const rateLimit = opts.rateLimit ? parseInt(opts.rateLimit, 10) : undefined
+        if (rateLimit !== undefined && (isNaN(rateLimit) || rateLimit < 1)) {
+          console.error(chalk.red('Rate limit must be a positive integer'))
+          process.exit(1)
+        }
+
         const job = createReplay({
           name: opts.name,
           capture_id: opts.capture,
           target_url: opts.target,
           mode: opts.mode,
-          rate_limit: opts.rateLimit ? parseInt(opts.rateLimit, 10) : undefined,
+          rate_limit: rateLimit,
         })
         console.log(chalk.green('Replay created:'))
         console.log(formatReplay(job))
         console.log(`\n  ID: ${chalk.cyan(job.id)}`)
-        console.log(chalk.gray('  (Replay engine will be implemented in Phase 3)'))
+
+        spinner = ora('Starting replay...').start()
+
+        handleSigint = () => {
+          if (spinner) spinner.fail('Replay cancelled')
+          updateReplayStatus(job.id, 'failed')
+          process.exit(1)
+        }
+        process.on('SIGINT', handleSigint)
+
+        await runReplay(job.id, (completed, total) => {
+          if (spinner) {
+            spinner.text = `Replaying... ${completed}/${total} requests`
+          }
+        })
+
+        if (spinner) spinner.succeed('Replay completed')
+
+        const summary = getReplaySummary(job.id)
+        if (summary) {
+          console.log('\n  Summary:')
+          console.log(formatReplaySummary(summary))
+        }
+
+        const results = getResultsByReplay(job.id)
+        if (results.length > 0) {
+          console.log(chalk.bold('\n  Results:'))
+          for (const result of results) {
+            const statusMatch = result.original_status === result.replayed_status
+            const icon = result.error ? chalk.red('✗')
+              : result.body_identical && statusMatch ? chalk.green('✓')
+              : chalk.yellow('!')
+            const statusDiff = statusMatch ? '' : ` (was ${result.original_status})`
+            const latency = result.replayed_latency_ms != null ? `${result.replayed_latency_ms.toFixed(1)}ms` : 'N/A'
+            console.log(`  ${icon} ${result.request_id.slice(0, 8)} → ${result.replayed_status}${statusDiff} [${latency}]${result.error ? ` ${chalk.red(result.error)}` : ''}`)
+          }
+        }
       } catch (err) {
-        console.error(chalk.red('Failed to create replay:'), err)
+        if (spinner) spinner.fail('Replay failed')
+        console.error(chalk.red('Failed to run replay:'), err)
         process.exit(1)
+      } finally {
+        if (handleSigint) process.removeListener('SIGINT', handleSigint)
       }
     })
 
