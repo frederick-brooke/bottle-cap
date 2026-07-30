@@ -16,7 +16,7 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 - **Phase 3 ✅** — Replay engine (paced/burst/throttled modes, diff engine, CLI integration)
 - **Phase 4 ✅** — CLI polish + replay hardening (colored output, --json flag, migration tracking, bug fixes)
 - **Phase 5 ✅** — API layer (Express REST API, auth, 10 endpoints, supertest tests)
-- **Phase 6** — Web dashboard (debug UI done, full dashboard not started)
+- **Phase 6 ✅** — Web dashboard (Next.js UI, replay execution, diff viewer, latency charts, docs)
 
 ## Architecture
 - **CLI** (`src/cli/`): Commander.js-based CLI for capture, replay, diff commands
@@ -47,8 +47,26 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
   - `routes/replays.ts`: Create (fire-and-forget 202), list, get, cancel
   - `routes/results.ts`: Get replay results + summary
   - `routes/stats.ts`: Capture statistics with batch query optimization
-- **Web UI** (`src/web/`): Next.js dashboard for visualization
-- **Debug UI** (`src/app/debug/`): Capture proxy debug console
+- **Web UI** (`src/web/`): Reusable React components (StatusBadge, CaptureCard, ReplayCard, ReplayForm, ResultsTable, DiffViewer, LatencyChart, etc.)
+- **Dashboard** (`src/app/`): Next.js App Router pages
+  - `/`: Dashboard home with stats, recent captures/replays
+  - `/capture`: Capture console (start/stop captures, send test requests)
+  - `/captures/[id]`: Capture detail with request list and replay history
+  - `/replays`: Replay list with pagination
+  - `/replays/new`: Create replay form (supports capture preselection via query param)
+  - `/replays/[id]`: Replay detail with progress animation, results table, diff viewer, latency chart
+  - `/docs/cli`: CLI reference documentation
+  - `/docs/api`: API reference documentation
+- **Dashboard API** (`src/app/api/dashboard/`): Next.js API routes for the dashboard
+  - `stats/route.ts`: Overview statistics
+  - `captures/route.ts`: List captures with enrichment
+  - `captures/[id]/route.ts`: Capture detail + requests + replays
+  - `replays/route.ts`: List/create replays (auto-executes on create)
+  - `replays/[id]/route.ts`: Replay detail with summary
+  - `replays/[id]/results/route.ts`: Replay results
+  - `replays/[id]/cancel/route.ts`: Cancel running replay
+  - `requests/[id]/route.ts`: Request detail with body retrieval
+  - `stats/[captureId]/route.ts`: Capture-level stats
 
 ## Key Conventions
 - Use `tsx` to run TypeScript files directly (CLI, API server)
@@ -60,12 +78,14 @@ Bottle-Cap is an incident replay tool. It captures production HTTP traffic via a
 - Environment variables in `.env` (see `.env.example`)
 - Tests run serially (`fileParallelism: false`) due to shared SQLite singleton
 - CLI uses `parseAsync()` (not `parse()`) for proper async action handling
+- Dashboard uses Next.js API routes (not Express) to call storage repositories directly
+- `captureApi` (not `debugApi`) is the client-side API for capture operations
 
 ## Commands
 ```bash
 npm run cli -- <command>     # Run CLI commands
-npm run dev                  # Start Next.js dev server (includes debug UI)
-npm run dev:api              # Start Express API server
+npm run dev                  # Start Next.js dev server (dashboard + capture console)
+npm run dev:api              # Start Express API server (port 3001)
 npm test                     # Run Vitest tests
 npm run test:run             # Run tests once (CI mode)
 npm run lint                 # ESLint
@@ -77,9 +97,10 @@ npm run lint                 # ESLint
 - Tracking: `_schema_migrations` table tracks applied migrations
 - View: `replay_summary` for aggregated results
 - Auto-migrates on first connection via `getDatabase()`
+- DB path: `./data/bottlecap.db` (configurable via `BOTTLECAP_DB_PATH` env var)
 
 ## Proxy
-- Runs in-process via `src/proxy/manager.ts` (for debug UI) or directly via `src/proxy/server.ts` (for CLI)
+- Runs in-process via `src/proxy/manager.ts` (for capture console) or directly via `src/proxy/server.ts` (for CLI)
 - Sanitizes headers: Authorization, Cookie, Set-Cookie, Proxy-Authorization, X-Api-Key
 - Extracts trace_id from: X-Request-ID, X-Trace-ID, traceparent
 - Extracts service_version from: X-Service-Version, X-App-Version, X-Version
@@ -91,6 +112,7 @@ npm run lint                 # ESLint
 - **Error handling**: `onResult` wrapped in try/catch; `send()` rejection records error result
 - **Truncation**: Responses >1MB flagged with `truncated: true` in results
 - **Config**: `rejectUnauthorized` controls TLS verification (default: true)
+- **Dashboard execution**: Replays auto-execute when created from the dashboard (fire-and-forget via `runReplay()`)
 
 ## Diff Engine
 - **Body diff**: Recursive JSON comparison with `maxDepth` (default 64) to prevent stack overflow
@@ -103,8 +125,15 @@ npm run lint                 # ESLint
 - **Input validation**: `--port` and `--sample-rate` validated before use
 - **Daemon mode**: Background capture with PID file management and stale PID detection
 
-## Debug UI
-- Access at `/debug` when running `npm run dev`
-- Start/stop captures, send test requests, view captured traffic live
-- API routes at `/api/debug/*`
+## Dashboard Features
+- **Dashboard home**: Overview stats, recent captures with Replay button, recent replays with Re-run button
+- **Capture console**: Start/stop captures, send test requests, view captured traffic live
+- **Capture detail**: Request list, replay history, link to create replay
+- **Replay list**: Paginated list with status, mode, pass rate, running indicator
+- **Replay creation**: Form with capture preselection (via `?capture=<id>` query param), mode selection
+- **Replay detail**: Progress animation (pulsing dot + progress bar), summary cards, latency chart, results table, diff viewer
+- **Diff viewer**: JSON diff with side-by-side view, addition/removal highlighting
+- **Latency chart**: Bar chart comparing original vs replayed latency with tooltips
+- **Docs pages**: CLI reference and API reference with endpoint documentation
+- **Re-run flow**: Replay button on CaptureCard → pre-fills capture on `/replays/new`; Re-run button on ReplayCard → same
 <!-- END:bottle-cap-agent-rules -->

@@ -71,7 +71,7 @@ projects/bottle-cap/
 │   │   ├── latency-diff.ts         # Latency analysis
 │   │   └── types.ts                # Diff type definitions
 │   │
-│   ├── api/                        # REST API
+│   ├── api/                        # Express REST API
 │   │   ├── server.ts               # Express server
 │   │   ├── routes/
 │   │   │   ├── captures.ts         # Capture endpoints
@@ -80,20 +80,75 @@ projects/bottle-cap/
 │   │   └── middleware/
 │   │       └── auth.ts             # API key auth
 │   │
-│   └── web/                        # Next.js Web UI
-│       ├── pages/
-│       │   ├── index.tsx           # Dashboard
-│       │   ├── captures/
-│       │   │   └── [id].tsx        # Capture detail
-│       │   └── replays/
-│       │       └── [id].tsx        # Replay results
-│       ├── components/
-│       │   ├── CaptureList.tsx
-│       │   ├── ReplayResults.tsx
-│       │   ├── DiffViewer.tsx
-│       │   └── LatencyChart.tsx
-│       └── lib/
-│           └── api.ts              # API client
+│   ├── web/                        # Reusable React components
+│   │   ├── components/
+│   │   │   ├── StatusBadge.tsx     # Status & mode badges
+│   │   │   ├── CaptureCard.tsx     # Capture card with Replay button
+│   │   │   ├── ReplayCard.tsx      # Replay card with Re-run button
+│   │   │   ├── ReplayForm.tsx      # Replay creation form
+│   │   │   ├── ResultsTable.tsx    # Replay results table
+│   │   │   ├── DiffViewer.tsx      # JSON diff visualization
+│   │   │   ├── LatencyChart.tsx    # Latency comparison chart
+│   │   │   ├── DashboardStats.tsx  # Overview stat cards
+│   │   │   ├── EmptyState.tsx      # Empty state placeholder
+│   │   │   ├── CaptureForm.tsx     # Capture creation form
+│   │   │   ├── CaptureList.tsx     # Capture list (capture console)
+│   │   │   ├── RequestList.tsx     # HTTP request list
+│   │   │   └── RequestDetail.tsx   # HTTP request detail
+│   │   └── lib/
+│   │       └── api.ts              # API client (captureApi + dashboardApi)
+│   │
+│   └── app/                        # Next.js App Router
+│       ├── page.tsx                # Dashboard home
+│       ├── layout.tsx              # Root layout with nav
+│       ├── globals.css             # Tailwind CSS config
+│       ├── capture/
+│       │   └── page.tsx            # Capture console
+│       ├── captures/
+│       │   └── [id]/
+│       │       └── page.tsx        # Capture detail
+│       ├── replays/
+│       │   ├── page.tsx            # Replay list
+│       │   ├── new/
+│       │   │   └── page.tsx        # Create replay
+│       │   └── [id]/
+│       │       └── page.tsx        # Replay detail
+│       ├── docs/
+│       │   ├── cli/
+│       │   │   └── page.tsx        # CLI reference
+│       │   └── api/
+│       │       └── page.tsx        # API reference
+│       └── api/
+│           ├── capture/            # Capture console API routes
+│           │   ├── captures/
+│           │   │   ├── route.ts
+│           │   │   └── [id]/
+│           │   │       ├── route.ts
+│           │   │       └── stop/route.ts
+│           │   ├── requests/
+│           │   │   └── [id]/
+│           │   │       └── route.ts
+│           │   └── test/
+│           │       └── route.ts
+│           └── dashboard/          # Dashboard API routes
+│               ├── stats/
+│               │   └── route.ts
+│               ├── captures/
+│               │   ├── route.ts
+│               │   └── [id]/
+│               │       └── route.ts
+│               ├── replays/
+│               │   ├── route.ts
+│               │   └── [id]/
+│               │       ├── route.ts
+│               │       ├── cancel/route.ts
+│               │       └── results/route.ts
+│               ├── requests/
+│               │   └── [id]/
+│               │       └── route.ts
+│               └── stats/
+│                   └── [captureId]/
+│                       └── route.ts
 │
 ├── migrations/                     # SQLite migrations
 │   ├── 000_migration_tracking.sql  # Migration tracking table
@@ -114,6 +169,8 @@ projects/bottle-cap/
     │       ├── burst.test.ts
     │       ├── pace.test.ts
     │       └── throttle.test.ts
+    ├── dashboard/
+    │   └── api.test.ts             # Dashboard storage function tests
     └── helpers/
         ├── mock-target.ts
         └── test-db.ts
@@ -227,7 +284,7 @@ GROUP BY r.id;
 | **3. Replay Engine** | Week 3-4 | Paced replay mode, basic diff comparison | ✅ Complete |
 | **4. CLI Polish** | Week 5 | All CLI commands, formatting, progress indicators, replay hardening | ✅ Complete |
 | **5. API Layer** | Week 6 | REST API for programmatic access | ✅ Complete |
-| **6. Web Dashboard** | Week 7-8 | Next.js UI with replay visualization | Partial (debug UI done) |
+| **6. Web Dashboard** | Week 7-8 | Next.js UI with replay visualization | ✅ Complete |
 
 ---
 
@@ -496,6 +553,83 @@ export default {
 | 3 | LOW | API | No request body size limit beyond Express default | Express 5 defaults to ~100KB JSON bodies. For most API use cases this is fine, but large payloads (e.g., batch operations) would need explicit `express.json({ limit: '1mb' })` configuration. |
 | 4 | LOW | API | Fire-and-forget replays have no retry on process crash | If the API server crashes mid-replay, the replay status remains `running` forever. There is no heartbeat or recovery mechanism. A future improvement could add a startup scan to reset stale `running` replays to `failed`. |
 | 5 | LOW | API | Stats endpoint limited to 100 replays per capture | `GET /api/stats/:captureId` fetches at most 100 replays. Captures with more replays will have older ones omitted from stats. Could be paginated or use a summary table in the future. |
+
+---
+
+## Phase 6: Web Dashboard ✅ Complete
+
+### Deliverables
+- Full Next.js dashboard for managing captures, replays, and viewing results
+- Dashboard home page with overview stats and recent activity
+- Capture detail page with request list and replay history
+- Replay list with pagination and status indicators
+- Replay creation form with capture preselection
+- Replay detail page with progress animation, results table, diff viewer, latency chart
+- CLI and API documentation pages
+- Re-run flow for quick replay creation from any capture or replay
+
+### Pages
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Dashboard home — stats, recent captures/replays |
+| `/capture` | Capture console — start/stop captures, send test requests |
+| `/captures/[id]` | Capture detail — requests, replay history |
+| `/replays` | Replay list — paginated with status/summary |
+| `/replays/new` | Create replay — form with capture preselection |
+| `/replays/[id]` | Replay detail — progress, results, diff, latency chart |
+| `/docs/cli` | CLI reference documentation |
+| `/docs/api` | API reference documentation |
+
+### Dashboard API Routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/dashboard/stats` | GET | Overview statistics |
+| `/api/dashboard/captures` | GET | List captures with enrichment |
+| `/api/dashboard/captures/[id]` | GET | Capture detail + requests + replays |
+| `/api/dashboard/replays` | GET/POST | List/create replays (auto-executes) |
+| `/api/dashboard/replays/[id]` | GET | Replay detail with summary |
+| `/api/dashboard/replays/[id]/results` | GET | Replay results |
+| `/api/dashboard/replays/[id]/cancel` | POST | Cancel running replay |
+| `/api/dashboard/requests/[id]` | GET | Request detail with body retrieval |
+| `/api/dashboard/stats/[captureId]` | GET | Capture-level stats |
+
+### New Components
+
+| Component | Purpose |
+|-----------|---------|
+| `StatusBadge.tsx` | Reusable status/mode badges |
+| `EmptyState.tsx` | Empty state placeholder |
+| `CaptureCard.tsx` | Capture card with Replay button |
+| `ReplayCard.tsx` | Replay card with Re-run button |
+| `DashboardStats.tsx` | Overview stat cards |
+| `ReplayForm.tsx` | Replay creation form |
+| `ResultsTable.tsx` | Replay results table |
+| `DiffViewer.tsx` | JSON diff visualization (diff + side-by-side) |
+| `LatencyChart.tsx` | Bar chart for latency comparison |
+
+### Key Features
+- **Auto-execution**: Replays auto-execute when created from the dashboard (fire-and-forget via `runReplay()`)
+- **Progress animation**: Pulsing dot + progress bar for running replays
+- **Capture preselection**: `?capture=<id>` query param pre-selects capture in replay form
+- **Re-run flow**: Replay button on CaptureCard, Re-run button on ReplayCard — both link to `/replays/new?capture=<id>`
+- **Diff viewer**: Always visible with prompt to select a request; supports diff and side-by-side views
+- **Latency chart**: Bar chart comparing original vs replayed latency with tooltips
+
+### Renamed Routes
+- `/debug` → `/capture` (capture console)
+- `debugApi` → `captureApi` (client-side API)
+- `/api/debug/*` → `/api/capture/*` (capture console API)
+
+### Database Fix
+- `database.ts`: Removed `bottlecap.config.ts` import (fails under Turbopack), replaced with `process.env.BOTTLECAP_DB_PATH` fallback
+- `database.ts`: Changed `process.exit(1)` to graceful return when migrations directory missing
+
+### Tests
+- **213 total tests passing** (up from 198 in Phase 5)
+- **15 new dashboard tests** covering storage functions used by dashboard routes
+- **Lint clean**
 
 ---
 
