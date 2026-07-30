@@ -336,6 +336,14 @@ export default {
 
 ---
 
+## Future Optimizations (Deferred)
+
+| Area | Issue | Notes |
+|------|-------|-------|
+| Performance | `shouldStop()` caching | In paced mode with large captures (10K+ requests), `shouldStop()` reads the SQLite DB on every call (before each request and during 100ms sleep chunks). Could be optimized by caching the replay status locally and refreshing periodically (e.g., every 5 seconds or every 100 requests). Deferred from Phase 4 — better-sqlite3 reads are ~microseconds so the overhead is acceptable for now. |
+
+---
+
 ## Monetization Strategy
 
 | Tier | Price | Features |

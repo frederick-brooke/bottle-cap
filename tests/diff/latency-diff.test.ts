@@ -48,4 +48,34 @@ describe('analyzeLatency', () => {
     const result = analyzeLatency(300, 400)!
     expect(result.percentageChange).toBe(33.33)
   })
+
+  it('returns null when original is NaN', () => {
+    expect(analyzeLatency(NaN, 100)).toBeNull()
+  })
+
+  it('returns null when replayed is NaN', () => {
+    expect(analyzeLatency(100, NaN)).toBeNull()
+  })
+
+  it('returns null when both are NaN', () => {
+    expect(analyzeLatency(NaN, NaN)).toBeNull()
+  })
+
+  it('handles negative latency values', () => {
+    const result = analyzeLatency(-50, 100)!
+    expect(result.deltaMs).toBe(150)
+    expect(result.percentageChange).toBe(-300)
+  })
+
+  it('returns null when original is Infinity', () => {
+    expect(analyzeLatency(Infinity, 100)).toBeNull()
+  })
+
+  it('returns null when replayed is Infinity', () => {
+    expect(analyzeLatency(100, Infinity)).toBeNull()
+  })
+
+  it('returns null when original is -Infinity', () => {
+    expect(analyzeLatency(-Infinity, 100)).toBeNull()
+  })
 })

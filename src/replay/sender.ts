@@ -30,7 +30,7 @@ export function createSender(options: ReplayOptions) {
   const url = new URL(options.targetUrl)
   const isHttps = url.protocol === 'https:'
   const agent = isHttps
-    ? new https.Agent({ rejectUnauthorized: false, keepAlive: true })
+    ? new https.Agent({ rejectUnauthorized: options.rejectUnauthorized, keepAlive: true })
     : new http.Agent({ keepAlive: true })
 
   return async (request: HttpRequest): Promise<SendResult> => {
@@ -68,6 +68,7 @@ export function createSender(options: ReplayOptions) {
             body: null,
             latencyMs: Date.now() - startTime,
             error: `Request timed out after ${options.timeout}ms`,
+            truncated: false,
           })
         }, options.timeout)
 
@@ -107,6 +108,7 @@ export function createSender(options: ReplayOptions) {
                 body: Buffer.concat(chunks).toString('utf-8'),
                 latencyMs,
                 error: responseSize > MAX_RESPONSE_BODY ? 'Response body truncated' : null,
+                truncated: responseSize > MAX_RESPONSE_BODY,
               })
             })
             res.on('error', (err) => {
@@ -117,6 +119,7 @@ export function createSender(options: ReplayOptions) {
                 body: null,
                 latencyMs: Date.now() - startTime,
                 error: err.message,
+                truncated: false,
               })
             })
           },
@@ -130,6 +133,7 @@ export function createSender(options: ReplayOptions) {
             body: null,
             latencyMs: Date.now() - startTime,
             error: err.message,
+            truncated: false,
           })
         })
 
@@ -142,6 +146,7 @@ export function createSender(options: ReplayOptions) {
             body: null,
             latencyMs: Date.now() - startTime,
             error: `Request timed out after ${options.timeout}ms`,
+            truncated: false,
           })
         })
 
@@ -160,6 +165,7 @@ export function createSender(options: ReplayOptions) {
         body: null,
         latencyMs: Date.now() - startTime,
         error: err instanceof Error ? err.message : String(err),
+        truncated: false,
       }
     }
   }

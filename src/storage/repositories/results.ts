@@ -11,6 +11,7 @@ export interface CreateResultInput {
   replayed_latency_ms: number | null
   body_diff_summary?: Record<string, unknown> | null
   body_identical: boolean | null
+  truncated?: boolean | null
   error?: string | null
 }
 
@@ -19,8 +20,8 @@ export function createResult(input: CreateResultInput): ReplayResult {
   const id = uuid()
   const stmt = db.prepare(`
     INSERT INTO replay_results (id, replay_id, request_id, original_status, replayed_status,
-      original_latency_ms, replayed_latency_ms, body_diff_summary, body_identical, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      original_latency_ms, replayed_latency_ms, body_diff_summary, body_identical, truncated, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   stmt.run(
     id,
@@ -32,7 +33,8 @@ export function createResult(input: CreateResultInput): ReplayResult {
     input.replayed_latency_ms,
     input.body_diff_summary ? JSON.stringify(input.body_diff_summary) : null,
     input.body_identical,
-    input.error ?? null
+    input.truncated ? 1 : 0,
+    input.error ?? null,
   )
   return getResult(id)!
 }
@@ -77,7 +79,8 @@ function mapRowToResult(row: Record<string, unknown>): ReplayResult {
     original_latency_ms: row.original_latency_ms as number | null,
     replayed_latency_ms: row.replayed_latency_ms as number | null,
     body_diff_summary: row.body_diff_summary ? JSON.parse(row.body_diff_summary as string) : null,
-    body_identical: row.body_identical as boolean | null,
+    body_identical: row.body_identical === 1 || row.body_identical === true,
+    truncated: row.truncated === 1 || row.truncated === true,
     error: row.error as string | null,
     replayed_at: row.replayed_at as string,
   }

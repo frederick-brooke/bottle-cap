@@ -108,4 +108,41 @@ describe('diffBody', () => {
     const result = diffBody('{"a":1}', 'not json')
     expect(result.changed).toBe(1)
   })
+
+  it('handles deeply nested objects without stack overflow', () => {
+    let deep1: Record<string, unknown> = { value: 'original' }
+    let deep2: Record<string, unknown> = { value: 'changed' }
+    for (let i = 0; i < 100; i++) {
+      deep1 = { nested: deep1 }
+      deep2 = { nested: deep2 }
+    }
+    const result = diffBody(JSON.stringify(deep1), JSON.stringify(deep2))
+    expect(result.changed).toBeGreaterThanOrEqual(1)
+  })
+
+  it('respects maxDepth parameter', () => {
+    const original = JSON.stringify({ a: { b: { c: { d: 'original' } } } })
+    const replayed = JSON.stringify({ a: { b: { c: { d: 'changed' } } } })
+    const result = diffBody(original, replayed, 2)
+    expect(result.changed).toBe(1)
+    expect(result.details[0].path).toBe('a.b')
+    expect(result.details[0].kind).toBe('edited')
+  })
+
+  it('detects changes within maxDepth', () => {
+    const original = JSON.stringify({ a: { b: 1 } })
+    const replayed = JSON.stringify({ a: { b: 2 } })
+    const result = diffBody(original, replayed, 64)
+    expect(result.changed).toBe(1)
+    expect(result.details[0].path).toBe('a.b')
+  })
+
+  it('does not false-positive on identical objects at maxDepth', () => {
+    const original = JSON.stringify({ a: { b: { c: { d: 1 } } } })
+    const replayed = JSON.stringify({ a: { b: { c: { d: 1 } } } })
+    const result = diffBody(original, replayed, 2)
+    expect(result.changed).toBe(0)
+    expect(result.added).toBe(0)
+    expect(result.removed).toBe(0)
+  })
 })

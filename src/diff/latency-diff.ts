@@ -5,6 +5,8 @@ export function analyzeLatency(
   replayedMs: number | null,
 ): LatencyAnalysis | null {
   if (originalMs === null || replayedMs === null) return null
+  if (Number.isNaN(originalMs) || Number.isNaN(replayedMs)) return null
+  if (!Number.isFinite(originalMs) || !Number.isFinite(replayedMs)) return null
 
   const deltaMs = replayedMs - originalMs
   const percentageChange = originalMs === 0

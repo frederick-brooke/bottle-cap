@@ -5,7 +5,8 @@ import chalk from 'chalk'
 import { createCapture, getCapture, listCaptures, updateCaptureStatus } from '../../storage/repositories/captures'
 import { createProxyServer } from '../../proxy/server'
 import type { CaptureSession } from '../../proxy/types'
-import { formatCapture, formatTable } from '../utils/format'
+import { formatCapture, formatTable, formatJson } from '../utils/format'
+import { closeDatabase } from '../../storage/database'
 import config from '../../../bottlecap.config'
 
 function getPidPath(captureId: string): string {
@@ -40,18 +41,30 @@ export function registerCaptureCommand(program: Command): void {
     .option('-d, --daemon', 'Run in background (daemon mode)')
     .action(async (opts) => {
       try {
+        const sampleRate = parseFloat(opts.sampleRate)
+        if (isNaN(sampleRate) || sampleRate < 0 || sampleRate > 1) {
+          console.error(chalk.red('Sample rate must be a number between 0 and 1'))
+          process.exit(1)
+        }
+
+        const listenPort = parseInt(opts.port, 10)
+        if (isNaN(listenPort) || listenPort < 1 || listenPort > 65535) {
+          console.error(chalk.red('Port must be a number between 1 and 65535'))
+          process.exit(1)
+        }
+
         const cap = createCapture({
           name: opts.name,
           service_name: opts.service,
           target_url: opts.target,
-          sample_rate: parseFloat(opts.sampleRate),
+          sample_rate: sampleRate,
         })
 
         const session: CaptureSession = {
           captureId: cap.id,
           targetUrl: opts.target,
-          sampleRate: parseFloat(opts.sampleRate),
-          listenPort: parseInt(opts.port, 10),
+          sampleRate: sampleRate,
+          listenPort: listenPort,
           maxBodySize: parseBodySize(config.proxy.maxBodySize),
         }
 
@@ -70,17 +83,22 @@ export function registerCaptureCommand(program: Command): void {
 
           await server.listen(session.listenPort)
 
-          process.on('SIGTERM', async () => {
-            await server.close()
-            updateCaptureStatus(cap.id, 'completed')
-            removePidFile(cap.id)
-            process.exit(0)
-          })
-          process.on('SIGINT', async () => {
-            await server.close()
-            updateCaptureStatus(cap.id, 'completed')
-            removePidFile(cap.id)
-            process.exit(0)
+          // Keep the process alive until a signal is received
+          await new Promise<void>((resolve) => {
+            process.on('SIGTERM', async () => {
+              await server.close()
+              updateCaptureStatus(cap.id, 'completed')
+              removePidFile(cap.id)
+              closeDatabase()
+              resolve()
+            })
+            process.on('SIGINT', async () => {
+              await server.close()
+              updateCaptureStatus(cap.id, 'completed')
+              removePidFile(cap.id)
+              closeDatabase()
+              resolve()
+            })
           })
         } else {
           console.log(chalk.green('Capture started:'))
@@ -112,7 +130,8 @@ export function registerCaptureCommand(program: Command): void {
   capture
     .command('stop <id>')
     .description('Stop a capture session')
-    .action((id) => {
+    .option('--json', 'Output as JSON')
+    .action((id, opts) => {
       const cap = getCapture(id)
       if (!cap) {
         console.error(chalk.red(`Capture not found: ${id}`))
@@ -127,17 +146,34 @@ export function registerCaptureCommand(program: Command): void {
       if (fs.existsSync(pidPath)) {
         const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10)
         try {
+          // Check if process is alive (signal 0 doesn't actually send a signal)
+          process.kill(pid, 0)
           process.kill(pid, 'SIGTERM')
           removePidFile(id)
-          console.log(chalk.green(`Sent SIGTERM to process ${pid}`))
+          if (opts.json) {
+            console.log(formatJson({ status: 'stopped', pid }))
+          } else {
+            console.log(chalk.green(`Sent SIGTERM to process ${pid}`))
+          }
         } catch {
-          console.error(chalk.red(`Failed to signal process ${pid}. It may have already exited.`))
+          console.error(chalk.yellow(`Process ${pid} is not running. Cleaning up stale PID file.`))
           removePidFile(id)
+          const updated = updateCaptureStatus(id, 'completed')
+          if (opts.json) {
+            console.log(formatJson({ status: 'stopped', capture: updated }))
+          } else {
+            console.log(chalk.green('Capture stopped:'))
+            console.log(formatCapture(updated!))
+          }
         }
       } else {
         const updated = updateCaptureStatus(id, 'completed')
-        console.log(chalk.green('Capture stopped:'))
-        console.log(formatCapture(updated!))
+        if (opts.json) {
+          console.log(formatJson({ status: 'stopped', capture: updated }))
+        } else {
+          console.log(chalk.green('Capture stopped:'))
+          console.log(formatCapture(updated!))
+        }
       }
     })
 
@@ -145,8 +181,13 @@ export function registerCaptureCommand(program: Command): void {
     .command('list')
     .description('List all capture sessions')
     .option('-l, --limit <n>', 'Max results', '20')
+    .option('--json', 'Output as JSON')
     .action((opts) => {
       const captures = listCaptures({ limit: parseInt(opts.limit, 10) })
+      if (opts.json) {
+        console.log(formatJson({ captures }))
+        return
+      }
       if (captures.length === 0) {
         console.log(chalk.gray('No captures found.'))
         return
@@ -165,11 +206,16 @@ export function registerCaptureCommand(program: Command): void {
   capture
     .command('inspect <id>')
     .description('View capture details')
-    .action((id) => {
+    .option('--json', 'Output as JSON')
+    .action((id, opts) => {
       const cap = getCapture(id)
       if (!cap) {
         console.error(chalk.red(`Capture not found: ${id}`))
         process.exit(1)
+      }
+      if (opts.json) {
+        console.log(formatJson({ capture: cap }))
+        return
       }
       console.log(formatCapture(cap))
     })

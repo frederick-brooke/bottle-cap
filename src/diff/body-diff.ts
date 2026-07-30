@@ -17,10 +17,20 @@ function computeDiff(
   replayed: unknown,
   path: string[],
   details: DiffDetail[],
+  depth: number,
+  maxDepth: number,
 ): { added: number; removed: number; changed: number } {
   let added = 0
   let removed = 0
   let changed = 0
+
+  if (depth >= maxDepth) {
+    if (JSON.stringify(original) !== JSON.stringify(replayed)) {
+      changed++
+      details.push({ path: path.join('.'), kind: 'edited', lhs: original, rhs: replayed })
+    }
+    return { added, removed, changed }
+  }
 
   const origObj = isPlainObject(original)
   const repObj = isPlainObject(replayed)
@@ -44,6 +54,8 @@ function computeDiff(
           (replayed as Record<string, unknown>)[key],
           [...path, key],
           details,
+          depth + 1,
+          maxDepth,
         )
         added += sub.added
         removed += sub.removed
@@ -60,7 +72,7 @@ function computeDiff(
         removed++
         details.push({ path: [...path, String(i)].join('.'), kind: 'removed', lhs: original[i] })
       } else {
-        const sub = computeDiff(original[i], replayed[i], [...path, String(i)], details)
+        const sub = computeDiff(original[i], replayed[i], [...path, String(i)], details, depth + 1, maxDepth)
         added += sub.added
         removed += sub.removed
         changed += sub.changed
@@ -77,6 +89,7 @@ function computeDiff(
 export function diffBody(
   originalBody: string | null,
   replayedBody: string | null,
+  maxDepth: number = 64,
 ): DiffSummary {
   const details: DiffDetail[] = []
 
@@ -96,7 +109,7 @@ export function diffBody(
   const repParsed = tryParseJson(replayedBody!)
 
   if (origParsed.valid && repParsed.valid) {
-    const counts = computeDiff(origParsed.parsed, repParsed.parsed, [], details)
+    const counts = computeDiff(origParsed.parsed, repParsed.parsed, [], details, 0, maxDepth)
     return { ...counts, details }
   }
 

@@ -32,6 +32,7 @@ function makeSend(): (req: HttpRequest) => Promise<SendResult> {
     body: '{}',
     latencyMs: 10,
     error: null,
+    truncated: false,
   })
 }
 
@@ -79,6 +80,7 @@ describe('burstMode', () => {
         body: null,
         latencyMs: 10,
         error: null,
+        truncated: false,
       }
     }
 
@@ -119,6 +121,7 @@ describe('burstMode', () => {
           body: null,
           latencyMs: 5,
           error: 'Connection refused',
+          truncated: false,
         }
       }
       return {
@@ -128,6 +131,7 @@ describe('burstMode', () => {
         body: null,
         latencyMs: 5,
         error: null,
+        truncated: false,
       }
     }
 
@@ -138,5 +142,30 @@ describe('burstMode', () => {
 
     expect(results).toHaveLength(3)
     expect(results.find((r) => r.requestId === '2')?.error).toBe('Connection refused')
+  })
+
+  it('handles onResult errors gracefully without losing requests', async () => {
+    const requests = [makeRequest('1'), makeRequest('2'), makeRequest('3')]
+    const results: SendResult[] = []
+    let onResultCallCount = 0
+
+    await burstMode.execute(
+      requests,
+      makeSend(),
+      makeOptions({ maxConcurrent: 1 }),
+      (r) => {
+        onResultCallCount++
+        if (onResultCallCount === 2) {
+          throw new Error('DB write failed')
+        }
+        results.push(r)
+      },
+      () => false,
+    )
+
+    // All 3 requests should complete even though onResult threw for request 2
+    expect(onResultCallCount).toBe(3)
+    // Only 2 results recorded (request 2's result was lost due to the throw)
+    expect(results).toHaveLength(2)
   })
 })

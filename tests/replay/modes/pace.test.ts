@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { HttpRequest } from '../../src/types'
-import type { ReplayOptions, SendResult } from '../../src/replay/types'
-import { pacedMode } from '../../src/replay/modes/pace'
+import type { HttpRequest } from '../../../src/types'
+import type { ReplayOptions, SendResult } from '../../../src/replay/types'
+import { pacedMode } from '../../../src/replay/modes/pace'
 
 function makeRequest(id: string, recordedAt: string): HttpRequest {
   return {
@@ -32,6 +32,7 @@ function makeSend(): (req: HttpRequest) => Promise<SendResult> {
     body: '{}',
     latencyMs: 10,
     error: null,
+    truncated: false,
   })
 }
 
@@ -102,7 +103,7 @@ describe('pacedMode', () => {
     )
 
     expect(results).toHaveLength(2)
-  })
+  }, 45000)
 
   it('caps delay at 30 seconds', async () => {
     const requests = [
@@ -117,5 +118,5 @@ describe('pacedMode', () => {
     const elapsed = Date.now() - start
     expect(results).toHaveLength(2)
     expect(elapsed).toBeLessThan(35000)
-  })
+  }, 45000)
 })

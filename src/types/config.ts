@@ -17,6 +17,7 @@ export interface Config {
   replay: {
     defaultTimeout: number
     maxConcurrent: number
+    rejectUnauthorized: boolean
   }
   api: {
     port: number

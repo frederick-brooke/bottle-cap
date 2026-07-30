@@ -57,6 +57,7 @@ export interface ReplayResult {
   replayed_latency_ms: number | null
   body_diff_summary: Record<string, unknown> | null
   body_identical: boolean | null
+  truncated: boolean | null
   error: string | null
   replayed_at: string
 }

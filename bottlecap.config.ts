@@ -19,6 +19,7 @@ const config: Config = {
   replay: {
     defaultTimeout: 30000,
     maxConcurrent: 10,
+    rejectUnauthorized: true,
   },
   api: {
     port: parseInt(process.env.API_PORT || '3001', 10),

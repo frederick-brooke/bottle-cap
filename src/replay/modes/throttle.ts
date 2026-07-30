@@ -52,11 +52,28 @@ export const throttledMode: ReplayMode = {
           }
           send(request).then(
             (result) => {
-              onResult(result)
+              try {
+                onResult(result)
+              } catch (err) {
+                console.error('onResult callback error:', err)
+              }
               running--
               runNext()
             },
-            () => {
+            (err) => {
+              try {
+                onResult({
+                  requestId: request.id,
+                  statusCode: null,
+                  headers: null,
+                  body: null,
+                  latencyMs: 0,
+                  error: err instanceof Error ? err.message : String(err),
+                  truncated: false,
+                })
+              } catch (cbErr) {
+                console.error('onResult callback error:', cbErr)
+              }
               running--
               runNext()
             },

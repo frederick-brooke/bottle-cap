@@ -29,7 +29,8 @@ export const pacedMode: ReplayMode = {
         let remaining = Math.min(currTime - prevTime, MAX_DELAY_MS)
 
         while (remaining > 0) {
-          if (shouldStop()) return
+          const stop = shouldStop()
+          if (stop) return
           const sleepMs = Math.min(remaining, SLEEP_GRANULARITY_MS)
           await new Promise<void>((r) => setTimeout(r, sleepMs))
           remaining -= sleepMs

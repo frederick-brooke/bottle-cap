@@ -4,7 +4,7 @@ import ora from 'ora'
 import { createReplay, getReplay, listReplays, updateReplayStatus } from '../../storage/repositories/replays'
 import { getReplaySummary, getResultsByReplay } from '../../storage/repositories/results'
 import { runReplay } from '../../replay/engine'
-import { formatReplay, formatReplaySummary, formatTable } from '../utils/format'
+import { formatReplay, formatReplaySummary, formatTable, formatJson } from '../utils/format'
 
 export function registerReplayCommand(program: Command): void {
   const replay = program
@@ -19,6 +19,9 @@ export function registerReplayCommand(program: Command): void {
     .option('-n, --name <name>', 'Replay name')
     .option('-m, --mode <mode>', 'Replay mode (paced|burst|throttled)', 'paced')
     .option('-r, --rate-limit <n>', 'Rate limit for throttled mode')
+    .option('--reject-unauthorized', 'Verify TLS certificates (default: true)', true)
+    .option('--no-reject-unauthorized', 'Skip TLS certificate verification')
+    .option('--json', 'Output as JSON')
     .action(async (opts) => {
       let spinner: ora.Ora | null = null
       let handleSigint: (() => void) | null = null
@@ -36,9 +39,12 @@ export function registerReplayCommand(program: Command): void {
           mode: opts.mode,
           rate_limit: rateLimit,
         })
-        console.log(chalk.green('Replay created:'))
-        console.log(formatReplay(job))
-        console.log(`\n  ID: ${chalk.cyan(job.id)}`)
+
+        if (!opts.json) {
+          console.log(chalk.green('Replay created:'))
+          console.log(formatReplay(job))
+          console.log(`\n  ID: ${chalk.cyan(job.id)}`)
+        }
 
         spinner = ora('Starting replay...').start()
 
@@ -53,27 +59,36 @@ export function registerReplayCommand(program: Command): void {
           if (spinner) {
             spinner.text = `Replaying... ${completed}/${total} requests`
           }
-        })
+        }, { rejectUnauthorized: opts.rejectUnauthorized })
 
         if (spinner) spinner.succeed('Replay completed')
 
         const summary = getReplaySummary(job.id)
-        if (summary) {
-          console.log('\n  Summary:')
-          console.log(formatReplaySummary(summary))
-        }
-
         const results = getResultsByReplay(job.id)
-        if (results.length > 0) {
-          console.log(chalk.bold('\n  Results:'))
-          for (const result of results) {
-            const statusMatch = result.original_status === result.replayed_status
-            const icon = result.error ? chalk.red('✗')
-              : result.body_identical && statusMatch ? chalk.green('✓')
-              : chalk.yellow('!')
-            const statusDiff = statusMatch ? '' : ` (was ${result.original_status})`
-            const latency = result.replayed_latency_ms != null ? `${result.replayed_latency_ms.toFixed(1)}ms` : 'N/A'
-            console.log(`  ${icon} ${result.request_id.slice(0, 8)} → ${result.replayed_status}${statusDiff} [${latency}]${result.error ? ` ${chalk.red(result.error)}` : ''}`)
+
+        if (opts.json) {
+          console.log(formatJson({ replay: job, summary, results }))
+        } else {
+          if (summary) {
+            console.log('\n  Summary:')
+            console.log(formatReplaySummary(summary))
+          }
+
+          if (results.length > 0) {
+            console.log(chalk.bold('\n  Results:'))
+            for (const result of results) {
+              const statusMatch = result.original_status != null && result.replayed_status != null
+                && result.original_status === result.replayed_status
+              const icon = result.error ? chalk.red('✗')
+                : result.body_identical && statusMatch ? chalk.green('✓')
+                : chalk.yellow('!')
+              const originalStatus = result.original_status != null ? String(result.original_status) : '???'
+              const replayedStatus = result.replayed_status != null ? String(result.replayed_status) : '???'
+              const statusDiff = statusMatch ? '' : ` (was ${originalStatus})`
+              const latency = result.replayed_latency_ms != null ? `${result.replayed_latency_ms.toFixed(1)}ms` : 'N/A'
+              const truncated = result.truncated ? chalk.gray(' [truncated]') : ''
+              console.log(`  ${icon} ${result.request_id.slice(0, 8)} → ${replayedStatus}${statusDiff} [${latency}]${truncated}${result.error ? ` ${chalk.red(result.error)}` : ''}`)
+            }
           }
         }
       } catch (err) {
@@ -89,8 +104,13 @@ export function registerReplayCommand(program: Command): void {
     .command('list')
     .description('List all replay jobs')
     .option('-l, --limit <n>', 'Max results', '20')
+    .option('--json', 'Output as JSON')
     .action((opts) => {
       const replays = listReplays({ limit: parseInt(opts.limit, 10) })
+      if (opts.json) {
+        console.log(formatJson({ replays }))
+        return
+      }
       if (replays.length === 0) {
         console.log(chalk.gray('No replays found.'))
         return
@@ -110,15 +130,23 @@ export function registerReplayCommand(program: Command): void {
   replay
     .command('results <id>')
     .description('View replay results')
-    .action((id) => {
+    .option('--json', 'Output as JSON')
+    .action((id, opts) => {
       const job = getReplay(id)
       if (!job) {
         console.error(chalk.red(`Replay not found: ${id}`))
         process.exit(1)
       }
-      console.log(formatReplay(job))
 
       const summary = getReplaySummary(id)
+      const results = getResultsByReplay(id)
+
+      if (opts.json) {
+        console.log(formatJson({ replay: job, summary, results }))
+        return
+      }
+
+      console.log(formatReplay(job))
       if (summary) {
         console.log('\n  Summary:')
         console.log(formatReplaySummary(summary))
@@ -128,7 +156,8 @@ export function registerReplayCommand(program: Command): void {
   replay
     .command('cancel <id>')
     .description('Cancel a running replay')
-    .action((id) => {
+    .option('--json', 'Output as JSON')
+    .action((id, opts) => {
       const job = getReplay(id)
       if (!job) {
         console.error(chalk.red(`Replay not found: ${id}`))
@@ -139,7 +168,11 @@ export function registerReplayCommand(program: Command): void {
         process.exit(1)
       }
       const updated = updateReplayStatus(id, 'failed')
-      console.log(chalk.yellow('Replay cancelled:'))
-      console.log(formatReplay(updated!))
+      if (opts.json) {
+        console.log(formatJson({ replay: updated }))
+      } else {
+        console.log(chalk.yellow('Replay cancelled:'))
+        console.log(formatReplay(updated!))
+      }
     })
 }

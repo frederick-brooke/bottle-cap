@@ -8,6 +8,14 @@ import { compareResponses } from '@/diff/comparator'
 import type { ReplayOptions, SendResult } from './types'
 import config from '../../bottlecap.config'
 
+function safeJsonParse(str: string): unknown {
+  try {
+    return JSON.parse(str)
+  } catch {
+    return null
+  }
+}
+
 function loadRequests(captureId: string): HttpRequest[] {
   const db = getDatabase()
   const rows = db
@@ -19,11 +27,11 @@ function loadRequests(captureId: string): HttpRequest[] {
     trace_id: row.trace_id as string | null,
     method: row.method as string,
     url: row.url as string,
-    headers: row.headers ? JSON.parse(row.headers as string) : null,
+    headers: row.headers ? safeJsonParse(row.headers as string) as Record<string, string> | null : null,
     request_body_key: row.request_body_key as string | null,
     request_body_preview: row.request_body_preview as string | null,
     status_code: row.status_code as number | null,
-    response_headers: row.response_headers ? JSON.parse(row.response_headers as string) : null,
+    response_headers: row.response_headers ? safeJsonParse(row.response_headers as string) as Record<string, string> | null : null,
     response_body_key: row.response_body_key as string | null,
     response_body_preview: row.response_body_preview as string | null,
     latency_ms: row.latency_ms as number | null,
@@ -36,6 +44,7 @@ function loadRequests(captureId: string): HttpRequest[] {
 export async function runReplay(
   replayId: string,
   onProgress?: (completed: number, total: number) => void,
+  overrides?: { rejectUnauthorized?: boolean },
 ): Promise<ReplaySummary | null> {
   const replay = getReplay(replayId)
   if (!replay) throw new Error(`Replay not found: ${replayId}`)
@@ -59,6 +68,7 @@ export async function runReplay(
     rateLimit: replay.rate_limit ?? undefined,
     timeout: config.replay.defaultTimeout,
     maxConcurrent: config.replay.maxConcurrent,
+    rejectUnauthorized: overrides?.rejectUnauthorized ?? config.replay.rejectUnauthorized,
   }
 
   const mode = createMode(replay.mode)
@@ -93,6 +103,7 @@ export async function runReplay(
         replayed_latency_ms: result.latencyMs,
         body_diff_summary: diffResult.bodyDiffSummary as unknown as Record<string, unknown>,
         body_identical: diffResult.bodyIdentical ? 1 : 0,
+        truncated: result.truncated,
         error: result.error,
       })
 

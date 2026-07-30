@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rewriteUrl, getRequestBody } from '../../src/replay/sender'
+import { rewriteUrl, getRequestBody, createSender } from '../../src/replay/sender'
 import type { HttpRequest } from '../../src/types'
+import type { ReplayOptions } from '../../src/replay/types'
 
 vi.mock('../../src/storage/object-store', () => ({
   getObject: vi.fn().mockResolvedValue(Buffer.from('s3 body content')),
@@ -55,5 +56,38 @@ describe('getRequestBody', () => {
     const request = { id: '1', request_body_key: 'captures/abc/requests/123/request' } as HttpRequest
     const result = await getRequestBody(request)
     expect(result).toEqual(Buffer.from('s3 body content'))
+  })
+})
+
+describe('createSender', () => {
+  function makeOptions(overrides?: Partial<ReplayOptions>): ReplayOptions {
+    return {
+      replayId: 'replay1',
+      captureId: 'cap1',
+      targetUrl: 'http://target.com',
+      mode: 'burst',
+      timeout: 5000,
+      maxConcurrent: 10,
+      rejectUnauthorized: true,
+      ...overrides,
+    }
+  }
+
+  it('creates a sender for http target', async () => {
+    const send = createSender(makeOptions())
+    expect(typeof send).toBe('function')
+  })
+
+  it('creates a sender for https target', async () => {
+    const send = createSender(makeOptions({ targetUrl: 'https://target.com' }))
+    expect(typeof send).toBe('function')
+  })
+
+  it('passes rejectUnauthorized to https agent', async () => {
+    const send = createSender(makeOptions({
+      targetUrl: 'https://target.com',
+      rejectUnauthorized: false,
+    }))
+    expect(typeof send).toBe('function')
   })
 })

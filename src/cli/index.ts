@@ -14,8 +14,11 @@ program
   .hook('preAction', () => {
     getDatabase()
   })
-  .hook('postAction', () => {
-    closeDatabase()
+  .hook('postAction', (thisCommand) => {
+    // Don't close the DB for commands that run long-lived servers
+    if (thisCommand.name() !== 'start') {
+      closeDatabase()
+    }
   })
 
 registerCaptureCommand(program)
@@ -31,4 +34,13 @@ program
     closeDatabase()
   })
 
-program.parse(process.argv)
+async function main() {
+  try {
+    await program.parseAsync(process.argv)
+  } catch (err) {
+    console.error(err)
+    process.exit(1)
+  }
+}
+
+main()

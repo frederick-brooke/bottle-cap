@@ -8,6 +8,7 @@ export interface ReplayOptions {
   rateLimit?: number
   timeout: number
   maxConcurrent: number
+  rejectUnauthorized: boolean
 }
 
 export interface SendResult {
@@ -17,6 +18,7 @@ export interface SendResult {
   body: string | null
   latencyMs: number
   error: string | null
+  truncated: boolean
 }
 
 export interface ReplayMode {
