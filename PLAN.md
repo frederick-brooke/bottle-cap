@@ -96,12 +96,27 @@ projects/bottle-cap/
 │           └── api.ts              # API client
 │
 ├── migrations/                     # SQLite migrations
-│   └── 001_initial.sql
+│   ├── 000_migration_tracking.sql  # Migration tracking table
+│   ├── 001_initial.sql             # Initial schema
+│   └── 002_add_truncation.sql      # Add truncated column
 │
 └── tests/
-    ├── proxy/
+    ├── cli/
+    │   └── format.test.ts          # CLI formatting tests
+    ├── diff/
+    │   ├── body-diff.test.ts
+    │   ├── latency-diff.test.ts
+    │   └── comparator.test.ts
     ├── replay/
-    └── diff/
+    │   ├── sender.test.ts
+    │   ├── engine.test.ts
+    │   └── modes/
+    │       ├── burst.test.ts
+    │       ├── pace.test.ts
+    │       └── throttle.test.ts
+    └── helpers/
+        ├── mock-target.ts
+        └── test-db.ts
 ```
 
 ---
@@ -109,7 +124,7 @@ projects/bottle-cap/
 ## Database Schema
 
 ```sql
--- migrations/001_initial.sql
+-- migrations/001_initial.sql + 002_add_truncation.sql
 
 CREATE TABLE captures (
     id TEXT PRIMARY KEY,
@@ -173,11 +188,17 @@ CREATE TABLE replay_results (
     replayed_latency_ms REAL,
     body_diff_summary JSON,
     body_identical BOOLEAN,
+    truncated BOOLEAN DEFAULT 0,
     error TEXT,
     replayed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_results_replay ON replay_results(replay_id);
+
+CREATE TABLE _schema_migrations (
+    filename TEXT PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE VIEW replay_summary AS
 SELECT
@@ -204,7 +225,7 @@ GROUP BY r.id;
 | **1. Core Infrastructure** | Week 1 | Project setup, DB schema, basic CLI skeleton | ✅ Complete |
 | **2. Capture Proxy** | Week 2 | Working proxy that captures traffic to SQLite + S3 | ✅ Complete |
 | **3. Replay Engine** | Week 3-4 | Paced replay mode, basic diff comparison | ✅ Complete |
-| **4. CLI Polish** | Week 5 | All CLI commands, formatting, progress indicators | |
+| **4. CLI Polish** | Week 5 | All CLI commands, formatting, progress indicators, replay hardening | ✅ Complete |
 | **5. API Layer** | Week 6 | REST API for programmatic access | |
 | **6. Web Dashboard** | Week 7-8 | Next.js UI with replay visualization | Partial (debug UI done) |
 
@@ -216,24 +237,58 @@ GROUP BY r.id;
 # Capture traffic
 bottlecap capture start \
   --name "pre-deploy-capture" \
+  --service "my-api" \
   --target https://api.staging.example.com \
-  --listen 8080 \
+  --port 8080 \
   --sample-rate 1.0
+
+# Run capture in background
+bottlecap capture start \
+  --name "pre-deploy-capture" \
+  --service "my-api" \
+  --target https://api.staging.example.com \
+  --daemon
 
 # List captures
 bottlecap capture list
+bottlecap capture list --json
 
-# Execute replay
+# View capture details
+bottlecap capture inspect <id>
+
+# Stop a capture
+bottlecap capture stop <id>
+
+# Execute replay (with colored output)
 bottlecap replay run \
   --capture "pre-deploy-capture" \
   --target https://api.staging-fixed.example.com \
-  --mode paced
+  --mode burst
 
-# View results
+# Execute replay with JSON output
+bottlecap replay run \
+  --capture "pre-deploy-capture" \
+  --target https://api.staging-fixed.example.com \
+  --mode burst \
+  --json
+
+# Skip TLS verification for self-signed certs
+bottlecap replay run \
+  --capture "pre-deploy-capture" \
+  --target https://staging.local:8443 \
+  --no-reject-unauthorized
+
+# View replay results
 bottlecap replay results <replay-id>
+bottlecap replay results <replay-id> --json
 
-# Compare two replays
-bottlecap diff <replay-id-1> <replay-id-2>
+# Compare original vs replayed
+bottlecap diff <replay-id>
+bottlecap diff <replay-id> --json
+
+# List replays
+bottlecap replay list
+bottlecap list --type replays
 ```
 
 ---
@@ -273,11 +328,14 @@ export default {
   },
   proxy: {
     defaultSampleRate: 1.0,
-    maxBodySize: '10mb'
+    maxBodySize: '10mb',
+    listenPort: 8080,
+    daemonPidDir: './data'
   },
   replay: {
     defaultTimeout: 30000,
-    maxConcurrent: 10
+    maxConcurrent: 10,
+    rejectUnauthorized: true
   },
   api: {
     port: 3001,
@@ -318,21 +376,51 @@ export default {
 
 ---
 
-## Phase 4: CLI Polish + Replay Hardening
+## Phase 4: CLI Polish + Replay Hardening ✅ Complete
 
 ### Deliverables
 - All CLI commands fully polished with formatting and progress indicators
 - Replay engine hardening from Phase 3 code review
+- Migration tracking system
+- JSON output support for all commands
 
-### Code Review Carry-Forward (from Phase 3 review)
+### Bugs Fixed (from Phase 3 code review)
 
-| # | Severity | Area | Issue | Notes |
-|---|----------|------|-------|-------|
-| 1 | HIGH | `sender.ts` | TLS `rejectUnauthorized: false` hardcoded — no config opt-out | Add `replay.rejectUnauthorized` to `Config`, default `true`, allow `false` for self-signed staging certs |
-| 2 | HIGH | `cli/capture.ts` | `--daemon` mode: proxy process exits immediately after writing PID file | Investigate event loop draining — proxy server likely not keeping the process alive in daemon mode. Non-daemon mode works fine. |
-| 3 | MEDIUM | `sender.ts` | Silent 1MB response truncation — truncated body stored as complete, causes false diff positives | Add `truncated: boolean` flag to `SendResult`, set when `responseSize > MAX_RESPONSE_BODY`, include in diff summary |
-| 4 | MEDIUM | `body-diff.ts` | `computeDiff` recursive with no depth limit — stack overflow on deeply nested JSON | Add `maxDepth` parameter (default 64), stop recursing beyond it |
-| 5 | LOW | `latency-diff.ts` | `percentageChange` is `NaN` when `originalMs` is `NaN` (corrupt DB row) | Guard with `Number.isNaN()` check, return `0` or `null` |
+| # | Severity | Issue | Fix |
+|---|----------|-------|-----|
+| 1 | HIGH | TLS `rejectUnauthorized: false` hardcoded | Added `replay.rejectUnauthorized` config option (default `true`) + `--no-reject-unauthorized` CLI flag |
+| 2 | HIGH | `--daemon` mode exits immediately | Root cause: `program.parse()` discards async promise. Fixed to `program.parseAsync()` + never-resolving keep-alive promise + stale PID detection |
+| 3 | MEDIUM | Silent 1MB response truncation | Added `truncated` boolean to `SendResult` and `replay_results` table (new migration `002_add_truncation.sql`) |
+| 4 | MEDIUM | `computeDiff` stack overflow on deep JSON | Added `maxDepth` parameter (default 64), stops recursing with structural comparison at limit |
+| 5 | LOW | `percentageChange` NaN on corrupt data | Added `Number.isNaN()` and `Number.isFinite()` guards in `analyzeLatency` |
+
+### Additional Fixes
+
+| Issue | Fix |
+|-------|-----|
+| SQLite boolean conversion (0/1 vs true/false) | Changed `mapRowToResult` to explicitly convert integers to booleans |
+| Null status rendering (literal `null` in output) | Renders `???` for null statuses, proper null-safe comparison |
+| CWD-dependent migrations path | Changed to `path.resolve(__dirname, '../../migrations')` |
+| `loadRequests` JSON parse crash | Added `safeJsonParse` helper with try/catch |
+| `--port` and `--sample-rate` NaN propagation | Added input validation with descriptive error messages |
+| Burst/throttle send() rejection silently dropped | Now records error result instead of silently skipping |
+| Daemon SIGTERM doesn't close DB | Added `closeDatabase()` to signal handlers |
+
+### New Features
+
+| Feature | Details |
+|---------|---------|
+| Migration tracking | `_schema_migrations` table tracks applied migrations, prevents re-execution |
+| Colored mode names | `paced` (cyan), `burst` (magenta), `throttled` (yellow) |
+| Status badges | `✓ completed`, `● running`, `✗ failed`, `○ pending`, `◌ paused` |
+| Pass rate bar | Visual progress bar in replay summary (`████████░░ 80.0%`) |
+| `--json` output flag | Available on all commands for machine-readable output |
+| Stale PID detection | `capture stop` checks if process is alive before signaling |
+
+### Tests
+- **151 unit tests passing** (up from 107 in Phase 3)
+- **77 E2E validations passing**
+- **Lint clean**
 
 ---
 
