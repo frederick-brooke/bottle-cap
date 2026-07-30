@@ -1,43 +1,26 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
-import config from '../../bottlecap.config'
 
 let db: Database.Database | null = null
 
-export function getDatabase(): Database.Database {
-  if (!db) {
-    const dbPath = path.resolve(config.storage.database)
-    const dbDir = path.dirname(dbPath)
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true })
-    }
-    db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
-
-    runMigrations()
-  }
-  return db
+function getDbPath(): string {
+  const dbPath = process.env.BOTTLECAP_DB_PATH || './data/bottlecap.db'
+  return path.resolve(dbPath)
 }
 
-export function closeDatabase(): void {
-  if (db) {
-    db.close()
-    db = null
-  }
+function getMigrationsDir(): string {
+  return path.resolve(process.cwd(), 'migrations')
 }
 
-export function runMigrations(): void {
-  const database = getDatabase()
-  const migrationsDir = path.resolve(__dirname, '../../migrations')
+function applyMigrations(database: Database.Database): void {
+  const migrationsDir = getMigrationsDir()
 
   if (!fs.existsSync(migrationsDir)) {
     console.error('Migrations directory not found:', migrationsDir)
-    process.exit(1)
+    return
   }
 
-  // Ensure tracking table exists
   database.exec(`
     CREATE TABLE IF NOT EXISTS _schema_migrations (
       filename TEXT PRIMARY KEY,
@@ -61,9 +44,7 @@ export function runMigrations(): void {
 
   let appliedCount = 0
   for (const file of migrationFiles) {
-    if (applied.has(file)) {
-      continue
-    }
+    if (applied.has(file)) continue
     const filePath = path.join(migrationsDir, file)
     const sql = fs.readFileSync(filePath, 'utf-8')
     console.log(`Running migration: ${file}`)
@@ -75,7 +56,42 @@ export function runMigrations(): void {
     appliedCount++
   }
 
-  console.log(`Completed ${appliedCount} migration(s)`)
+  if (appliedCount > 0) {
+    console.log(`Completed ${appliedCount} migration(s)`)
+  }
+}
+
+export function getDatabase(): Database.Database {
+  if (db) return db
+
+  const dbPath = getDbPath()
+  const dbDir = path.dirname(dbPath)
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true })
+  }
+  db = new Database(dbPath)
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
+
+  try {
+    applyMigrations(db)
+  } catch (err) {
+    console.error('Migration error:', err)
+  }
+
+  return db
+}
+
+export function closeDatabase(): void {
+  if (db) {
+    db.close()
+    db = null
+  }
+}
+
+export function runMigrations(): void {
+  const database = getDatabase()
+  applyMigrations(database)
 }
 
 export function runCliMigrations(): void {

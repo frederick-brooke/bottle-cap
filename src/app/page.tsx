@@ -1,65 +1,150 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
+import { dashboardApi, type DashboardStats } from '@/web/lib/api'
+import { DashboardStats as DashboardStatsComponent } from '@/web/components/DashboardStats'
+import { CaptureCard } from '@/web/components/CaptureCard'
+import { ReplayCard } from '@/web/components/ReplayCard'
+import { EmptyState } from '@/web/components/EmptyState'
+
+interface RecentCapture {
+  id: string
+  name: string | null
+  status: string
+  service_name: string
+  request_count: number
+  started_at: string
+}
+
+interface RecentReplay {
+  id: string
+  name: string | null
+  status: string
+  mode: string
+  capture_id: string
+  created_at: string
+}
+
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [recentCaptures, setRecentCaptures] = useState<RecentCapture[]>([])
+  const [recentReplays, setRecentReplays] = useState<RecentReplay[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchData = useCallback(async () => {
+    try {
+      const data = await dashboardApi.getStats()
+      setStats(data.stats)
+      setRecentCaptures(data.recentCaptures)
+      setRecentReplays(data.recentReplays)
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData()
+    const interval = setInterval(fetchData, 5000)
+    return () => clearInterval(interval)
+  }, [fetchData])
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-zinc-500 text-sm">Loading dashboard...</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="flex-1 bg-zinc-950">
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-xl font-bold text-zinc-100">Dashboard</h1>
+          <div className="flex gap-3">
+            <Link
+              href="/capture"
+              className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition-colors"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              New Capture
+            </Link>
+            <Link
+              href="/replays/new"
+              className="text-sm bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded transition-colors"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              New Replay
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {error && (
+          <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 mb-6 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {stats && <DashboardStatsComponent stats={stats} />}
+
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-zinc-400">Recent Captures</h2>
+              <Link href="/capture" className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+                View all
+              </Link>
+            </div>
+            {recentCaptures.length === 0 ? (
+              <EmptyState
+                title="No captures yet"
+                description="Start a capture from the Capture console"
+                action={
+                  <Link href="/capture" className="text-xs text-emerald-400 hover:text-emerald-300">
+                    Go to Capture Console
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {recentCaptures.map(c => (
+                  <CaptureCard key={c.id} capture={c} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-zinc-400">Recent Replays</h2>
+              <Link href="/replays" className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+                View all
+              </Link>
+            </div>
+            {recentReplays.length === 0 ? (
+              <EmptyState
+                title="No replays yet"
+                description="Create a replay to compare responses"
+                action={
+                  <Link href="/replays/new" className="text-xs text-emerald-400 hover:text-emerald-300">
+                    Create Replay
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {recentReplays.map(r => (
+                  <ReplayCard key={r.id} replay={r} summary={null} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+    </main>
+  )
 }

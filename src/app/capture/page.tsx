@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { debugApi, type CaptureWithStatus, type TestResponse } from '@/web/lib/api'
+import { captureApi, type CaptureWithStatus, type TestResponse } from '@/web/lib/api'
 import { CaptureForm } from '@/web/components/CaptureForm'
 import { CaptureList } from '@/web/components/CaptureList'
 import { RequestList } from '@/web/components/RequestList'
@@ -27,14 +27,14 @@ export default function DebugPage() {
 
   const fetchCaptures = useCallback(async () => {
     try {
-      const data = await debugApi.listCaptures()
+      const data = await captureApi.listCaptures()
       setCaptures(data.captures)
     } catch { /* silent */ }
   }, [])
 
   const fetchRequests = useCallback(async (captureId: string) => {
     try {
-      const data = await debugApi.getCaptureRequests(captureId)
+      const data = await captureApi.getCaptureRequests(captureId)
       setRequests(data.requests)
     } catch { /* silent */ }
   }, [])
@@ -65,7 +65,7 @@ export default function DebugPage() {
     setLoading(true)
     setError(null)
     try {
-      await debugApi.startCapture(input)
+      await captureApi.startCapture(input)
       await fetchCaptures()
     } catch (err) {
       setError((err as Error).message)
@@ -76,7 +76,7 @@ export default function DebugPage() {
 
   const handleStopCapture = async (id: string) => {
     try {
-      await debugApi.stopCapture(id)
+      await captureApi.stopCapture(id)
       await fetchCaptures()
     } catch (err) {
       setError((err as Error).message)
@@ -93,7 +93,7 @@ export default function DebugPage() {
   const handleSelectRequest = async (id: string) => {
     setSelectedRequestId(id)
     try {
-      const data = await debugApi.getRequestDetail(id)
+      const data = await captureApi.getRequestDetail(id)
       setRequestDetail(data)
     } catch (err) {
       setError((err as Error).message)
@@ -111,7 +111,7 @@ export default function DebugPage() {
         parsedHeaders = JSON.parse(testHeaders)
       } catch { /* use empty */ }
 
-      const data = await debugApi.sendTestRequest({
+      const data = await captureApi.sendTestRequest({
         captureId: testCaptureId,
         method: testMethod,
         path: testPath,
@@ -128,7 +128,7 @@ export default function DebugPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-xl font-bold text-zinc-100">Debug Console</h1>
+      <h1 className="text-xl font-bold text-zinc-100">Capture Console</h1>
 
       {error && (
         <div className="bg-red-900/30 border border-red-800 rounded px-4 py-2 text-sm text-red-300">

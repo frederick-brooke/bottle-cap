@@ -31,7 +31,12 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <nav className="bg-zinc-900 border-b border-zinc-800 px-6 py-3 flex items-center gap-6">
           <Link href="/" className="text-sm font-bold text-zinc-100">Bottle-Cap</Link>
-          <Link href="/debug" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Debug</Link>
+          <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Dashboard</Link>
+          <Link href="/replays" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Replays</Link>
+          <Link href="/capture" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Capture</Link>
+          <span className="text-zinc-700">|</span>
+          <Link href="/docs/cli" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">CLI Docs</Link>
+          <Link href="/docs/api" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">API Docs</Link>
         </nav>
         {children}
       </body>
