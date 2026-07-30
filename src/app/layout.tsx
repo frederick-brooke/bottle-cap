@@ -34,9 +34,11 @@ export default function RootLayout({
           <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Dashboard</Link>
           <Link href="/replays" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Replays</Link>
           <Link href="/capture" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">Capture</Link>
-          <span className="text-zinc-700">|</span>
-          <Link href="/docs/cli" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">CLI Docs</Link>
-          <Link href="/docs/api" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">API Docs</Link>
+          <div className="ml-auto flex items-center gap-6">
+            <span className="text-zinc-700">|</span>
+            <Link href="/docs/cli" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">CLI Docs</Link>
+            <Link href="/docs/api" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">API Docs</Link>
+          </div>
         </nav>
         {children}
       </body>

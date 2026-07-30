@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { captureApi, type CaptureWithStatus, type TestResponse } from '@/web/lib/api'
 import { CaptureForm } from '@/web/components/CaptureForm'
 import { CaptureList } from '@/web/components/CaptureList'
@@ -127,8 +128,13 @@ export default function DebugPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-xl font-bold text-zinc-100">Capture Console</h1>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 w-[90%] mx-auto space-y-6">
+      <div>
+        <Link href="/" className="text-xs text-zinc-600 hover:text-zinc-400 mb-2 inline-block">
+          ← Dashboard
+        </Link>
+        <h1 className="text-xl font-bold text-zinc-100">Capture Console</h1>
+      </div>
 
       {error && (
         <div className="bg-red-900/30 border border-red-800 rounded px-4 py-2 text-sm text-red-300">
@@ -156,9 +162,11 @@ export default function DebugPage() {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-zinc-300 mb-3">Test Request</h2>
-            <form onSubmit={handleSendTest} className="space-y-3">
+          <details className="bg-zinc-900 border border-zinc-800 rounded-lg">
+            <summary className="text-sm font-semibold text-zinc-300 px-4 py-3 cursor-pointer select-none hover:text-zinc-100 transition-colors">
+              Test Request
+            </summary>
+            <form onSubmit={handleSendTest} className="space-y-3 px-4 pb-4">
               <div className="grid grid-cols-[auto_1fr] gap-2 items-end">
                 <div className="w-24">
                   <label className="block text-xs text-zinc-500 mb-1">Method</label>
@@ -242,7 +250,7 @@ export default function DebugPage() {
                 </pre>
               </div>
             )}
-          </section>
+          </details>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
             <h2 className="text-sm font-semibold text-zinc-300 mb-3">
