@@ -1,119 +1,149 @@
-# Phase 4 Handoff
+# Phase 5 Handoff
 
 ## Current State
 
-**Phase 3 (Replay Engine + Diff Engine) is complete.** All 107 tests pass, lint is clean, code is committed and pushed to `main`.
+**Phase 4 (CLI Polish + Replay Hardening) is complete.** All 151 tests pass, lint is clean, code is committed and pushed to `main`.
 
-- Commit: `d00f975` — Phase 3 implementation
-- Commit: `1e2c706` — AGENTS.md update
-
----
-
-## What Was Built in Phase 3
-
-### Replay Engine (`src/replay/`)
-- **`sender.ts`** — HTTP request sender. Rewrites captured URLs to target host, retrieves bodies (S3 or inline), handles timeouts (configurable, default 30s), uses shared HTTP agent with keep-alive.
-- **`engine.ts`** — Orchestrator. Loads requests from SQLite by capture_id, builds a `Map<string, HttpRequest>` for O(1) lookup, executes the chosen mode, records diff results per request via `createResult()`, tracks progress via local counter.
-- **`modes/pace.ts`** — Maintains original inter-request timing gaps (capped at 30s). Sleep in 100ms chunks with `shouldStop()` checks for responsive cancellation.
-- **`modes/burst.ts`** — Sends all requests concurrently up to `maxConcurrent` (default 10). Uses promise-based pool with `.catch()` handlers on every `send()`.
-- **`modes/throttle.ts`** — Rate-limited via `sleep(intervalMs)` between sends. `rateLimit` floored to minimum 1 to prevent `Infinity` hang.
-- **`modes/index.ts`** — Factory: `createMode(mode)` returns the appropriate mode.
-
-### Diff Engine (`src/diff/`)
-- **`body-diff.ts`** — Recursive JSON body comparison. Counts added/removed/changed fields. Falls back to string comparison for non-JSON.
-- **`latency-diff.ts`** — Computes delta and percentage change between original and replayed latency.
-- **`comparator.ts`** — Orchestrates body + latency comparison into a unified `DiffResult`.
-
-### CLI Updates
-- **`src/cli/commands/replay.ts`** — `replay run` now executes the engine end-to-end with `ora` spinner, live progress (`Replaying... 15/42`), Ctrl+C cancellation via `SIGINT` handler in `finally` block, and prints results with ✓/!/✗ icons.
-- **`src/cli/commands/diff.ts`** — `diff <id>` now shows field-level body diffs with color coding (green=added, red=removed, yellow=changed).
-
-### Tests (14 files, 107 tests)
-- `tests/replay/sender.test.ts` — URL rewriting, body retrieval
-- `tests/replay/engine.test.ts` — Full integration (mock target + SQLite)
-- `tests/replay/modes/pace.ts`, `burst.test.ts`, `throttle.test.ts` — Mode-specific tests
-- `tests/diff/body-diff.test.ts` — 13 JSON diff cases
-- `tests/diff/latency-diff.test.ts` — 9 latency analysis cases
-- `tests/diff/comparator.test.ts` — 5 comparison orchestration cases
+- Commit: `89383e3` — Docs update for Phase 4
+- Commit: `3f63254` — Phase 4 implementation
 
 ---
 
-## E2E Dry Run Results
+## What Was Built in Phase 4
 
-Ran the full workflow: capture → traffic → stop → replay → diff → list → results.
+### Migration System (`src/storage/database.ts`)
+- **`_schema_migrations` table** tracks which migrations have been applied
+- `runMigrations()` now skips already-applied files, wraps each in a transaction
+- Auto-runs on first `getDatabase()` call — no manual migrate needed
+- Migrations: `000_migration_tracking.sql`, `001_initial.sql`, `002_add_truncation.sql`
 
-### Setup
-- Echo server on `http://127.0.0.1:9999` (mirrors request details as JSON)
-- Capture proxy on `http://localhost:8888` → forwarded to echo server
-- Replay mode: `burst`
+### Replay Engine Hardening
+- **`sender.ts`** — `rejectUnauthorized` now configurable via `ReplayOptions` (default from `config.replay.rejectUnauthorized`)
+- **`engine.ts`** — `runReplay()` accepts `overrides?: { rejectUnauthorized?: boolean }`, safe JSON parsing in `loadRequests()`
+- **`modes/burst.ts`** — `onResult` wrapped in try/catch; `send()` rejection records error result
+- **`modes/throttle.ts`** — Same error handling as burst
+- **`types.ts`** — `SendResult` and `ReplayOptions` updated with `truncated` and `rejectUnauthorized`
 
-### Traffic Sent (6 requests)
-1. `GET /api/users`
-2. `POST /api/orders` with JSON body
-3. `GET /api/products?page=2&limit=5`
-4. `GET /api/users/42`
-5. `DELETE /api/orders/100`
-6. `PUT /api/users/42` with JSON body
+### Diff Engine Fixes
+- **`body-diff.ts`** — `computeDiff` now accepts `maxDepth` parameter (default 64), prevents stack overflow on deeply nested JSON
+- **`latency-diff.ts`** — `analyzeLatency` guards against NaN and Infinity inputs
 
-### Results
-- **Capture**: 6/6 requests captured successfully
-- **Replay**: 6/6 requests replayed, all HTTP 200, 0 errors
-- **Diff**: Status codes all matched (0 status changes). Bodies showed `~1` change each — the `headers.connection` field echoed differently (expected: echo server echoes request headers, replay sender adds its own). Avg latency delta: +29.2ms.
-- **Lists**: `capture list`, `replay list`, `replay results`, `capture inspect` all working
+### CLI Polish (`src/cli/`)
+- **`utils/format.ts`** — New helpers: `formatMode()` (colored), `formatStatusBadge()`, `formatStatusCode()`, `formatLatencyDelta()`, `formatProgressBar()`, `formatJson()`
+- **All commands** — `--json` flag for machine-readable output
+- **`capture.ts`** — Input validation for `--port` and `--sample-rate`, stale PID detection, `closeDatabase()` in daemon signal handlers
+- **`replay.ts`** — `--reject-unauthorized` / `--no-reject-unauthorized` flag, colored mode names
+- **`diff.ts`** — Null-safe status comparison, truncation indicator
+- **`list.ts`** — `--json` flag
+- **`index.ts`** — Changed `program.parse()` to `program.parseAsync()` (root cause of daemon mode bug)
 
-### Issue Found During Dry Run
-**`--daemon` mode is broken.** The proxy process exits immediately after writing the PID file. The non-daemon mode works fine when run with `nohup &`. Root cause is likely event loop draining — the proxy server isn't keeping the process alive in daemon mode. This is logged as Issue #2 in Phase 4 of PLAN.md.
-
----
-
-## Code Review Findings (Fixed in Phase 3)
-
-These were caught during code review and fixed before the final commit:
-
-| Issue | Fix |
-|-------|-----|
-| Unhandled promise rejections in burst/throttle `send().then()` — no `.catch()` | Added rejection handler that decrements `running` and calls `runNext()` |
-| `onResult` crash (DB error) left replay stuck in `running` permanently | Wrapped `onResult` in try/catch that sets status to `failed` |
-| `getRequestBody` treated any non-`captures/` key as inline body (UUIDs = garbage bytes) | Removed the unsafe fallback |
-| `shouldStop()` not checked before `send()` — cancelled replays fire extra requests | Added `shouldStop()` check inside sleep callback before `send()` |
-| New HTTP agent per request, never destroyed — connection pool leak | Created single agent per `createSender` call, reused across requests |
-| SIGINT handler leaked on `runReplay` failure — stacks handlers | Moved `removeListener` to `finally` block |
-| `rateLimit: 0` → `Infinity` → `sleep(Infinity)` hang | `Math.max(rateLimit, 1)` floor |
-| O(n²) `requests.find()` on every result | Built `Map<string, HttpRequest>` before execution |
-| Paced mode no `shouldStop()` during 30s sleep | Split sleep into 100ms chunks with checks |
+### Database Schema Changes
+- `replay_results` table now has `truncated BOOLEAN DEFAULT 0` column
+- `mapRowToResult()` explicitly converts SQLite integers to booleans (`0` → `false`, `1` → `true`)
 
 ---
 
-## Outstanding Issues for Phase 4
+## Phase 5 Scope: API Layer
 
-From PLAN.md Phase 4 section:
+### Deliverables
+- Express REST API for programmatic access
+- API key authentication middleware
+- Endpoints matching PLAN.md specification
 
-| # | Severity | Issue | Fix |
-|---|----------|-------|-----|
-| 1 | HIGH | TLS `rejectUnauthorized: false` hardcoded — no config opt-out | Add `replay.rejectUnauthorized` to `Config`, default `true` |
-| 2 | HIGH | `--daemon` mode exits immediately after PID file | Investigate event loop draining in `src/cli/commands/capture.ts` |
-| 3 | MEDIUM | Silent 1MB response truncation — truncated body stored as complete | Add `truncated: boolean` flag to `SendResult` |
-| 4 | MEDIUM | `computeDiff` recursive with no depth limit — stack overflow risk | Add `maxDepth` parameter (default 64) |
-| 5 | LOW | `percentageChange` is `NaN` when `originalMs` is `NaN` | Guard with `Number.isNaN()` check |
+### API Endpoints (from PLAN.md)
 
----
+```
+POST   /api/captures              # Create capture session
+GET    /api/captures              # List captures
+GET    /api/captures/:id          # Get capture details
+DELETE /api/captures/:id          # Stop/delete capture
 
-## Key Files to Know
+POST   /api/replays               # Create replay job
+GET    /api/replays               # List replays
+GET    /api/replays/:id           # Get replay status
+GET    /api/replays/:id/results   # Get diff results
+POST   /api/replays/:id/cancel    # Cancel running replay
+
+GET    /api/stats/:captureId      # Capture statistics
+```
+
+### Existing Infrastructure to Reuse
+- **Storage repos** — `src/storage/repositories/captures.ts`, `replays.ts`, `results.ts` (all CRUD operations exist)
+- **Replay engine** — `src/replay/engine.ts` `runReplay()` (already async, supports progress callback)
+- **Diff engine** — `src/diff/comparator.ts` `compareResponses()` (already works)
+- **Config** — `bottlecap.config.ts` has `api.port` and `api.apiKey`
+- **Types** — `src/types/index.ts` has `Capture`, `HttpRequest`, `Replay`, `ReplayResult`, `ReplaySummary`
+
+### Key Files to Know
 
 | File | What it does |
 |------|-------------|
-| `src/replay/engine.ts` | Core orchestrator — start here to understand replay flow |
-| `src/replay/sender.ts` | HTTP sender — URL rewriting, body retrieval, timeout |
-| `src/replay/modes/*.ts` | Three pacing strategies |
-| `src/diff/body-diff.ts` | JSON body comparison |
-| `src/cli/commands/replay.ts` | CLI integration with spinner and results |
-| `src/cli/commands/diff.ts` | CLI diff display |
-| `src/storage/repositories/replays.ts` | Replay CRUD |
-| `src/storage/repositories/results.ts` | Result CRUD + summary view |
-| `bottlecap.config.ts` | Config (replay.defaultTimeout, replay.maxConcurrent) |
-| `src/types/index.ts` | Shared types: Capture, HttpRequest, Replay, ReplayResult |
-| `tests/helpers/mock-target.ts` | `createMockTarget()` for tests |
-| `tests/helpers/test-db.ts` | `createTestDb()`, `clearTestDb()` for tests |
+| `src/storage/repositories/captures.ts` | Capture CRUD — `createCapture`, `getCapture`, `listCaptures`, `updateCaptureStatus` |
+| `src/storage/repositories/replays.ts` | Replay CRUD — `createReplay`, `getReplay`, `listReplays`, `updateReplayStatus`, `incrementReplayProgress` |
+| `src/storage/repositories/results.ts` | Result CRUD — `createResult`, `getResultsByReplay`, `getReplaySummary` |
+| `src/replay/engine.ts` | `runReplay(replayId, onProgress?, overrides?)` — returns `ReplaySummary` |
+| `src/types/index.ts` | All domain types |
+| `bottlecap.config.ts` | Config with `api.port` and `api.apiKey` |
+| `src/storage/database.ts` | `getDatabase()`, `closeDatabase()`, `runMigrations()` |
+
+### Conventions to Follow
+
+- **Testing**: Use `getDatabase()` directly. Clear tables in `beforeEach` with `DELETE FROM` in FK order. Use `createMockTarget()` from `tests/helpers/mock-target.ts`.
+- **IDs**: UUIDs via `uuid` package.
+- **Config**: Read from `bottlecap.config.ts`, not hardcoded values.
+- **Lint**: `npm run lint` must pass. No unused imports. `prefer-const`. `err` → `{}` if unused.
+- **Tests**: `npm run test:run` for single pass. `fileParallelism: false` — tests run serially.
+- **Running files**: Use `npx tsx` for TypeScript.
+- **DB access**: `getDatabase()` returns a synchronous `better-sqlite3` instance. All operations are sync.
+
+### Existing Tests to Be Aware Of
+
+| File | Tests |
+|------|-------|
+| `tests/replay/engine.test.ts` | Integration tests with mock HTTP target + SQLite |
+| `tests/replay/sender.test.ts` | URL rewriting, body retrieval |
+| `tests/replay/modes/*.test.ts` | Mode-specific tests (burst, pace, throttle) |
+| `tests/diff/*.test.ts` | Body diff, latency diff, comparator |
+| `tests/cli/format.test.ts` | CLI formatting utilities |
+
+---
+
+## E2E Dry Run Results (Phase 4)
+
+Ran the full workflow: capture → traffic → replay → diff → list → results.
+
+### Setup
+- Echo server on `http://127.0.0.1:9999` (mirrors request details as JSON)
+- Capture proxy on `http://localhost:8889` → forwarded to echo server
+- Replay mode: `burst`
+
+### Results
+- **Capture**: Traffic captured successfully
+- **Replay**: All three modes (burst, throttled, paced) completed successfully
+- **Diff**: Body diffs showing expected differences (echo server returns request details, not original response)
+- **CLI**: All commands working with colored output and `--json` flag
+- **Boolean conversion**: SQLite `0`/`1` properly converted to `true`/`false` in results
+
+### Issues Found and Fixed During Phase 4
+
+| Issue | Fix |
+|-------|-----|
+| `program.parse()` discards async promise → daemon mode exits | Changed to `program.parseAsync()` |
+| SQLite boolean conversion (0/1 vs true/false) | Explicit conversion in `mapRowToResult()` |
+| `JSON.stringify` order-dependent comparison at maxDepth | Reverted to simple comparison (order differences are legitimate at truncation boundary) |
+| Burst/throttle send() rejection silently dropped | Now records error result |
+| Daemon SIGTERM doesn't close DB | Added `closeDatabase()` to signal handlers |
+
+---
+
+## Key Files to Know (Phase 5)
+
+| File | What it does |
+|------|-------------|
+| `src/api/server.ts` | Express server (exists but not yet implemented) |
+| `src/api/routes/` | Route files (exist but empty) |
+| `src/api/middleware/auth.ts` | API key auth (exists but not yet implemented) |
+| `bottlecap.config.ts` | Has `api.port` and `api.apiKey` config |
 
 ---
 
@@ -125,3 +155,5 @@ From PLAN.md Phase 4 section:
 - **Lint**: `npm run lint` must pass. No unused imports. `prefer-const`. `err` → `{}` if unused.
 - **Tests**: `npm run test:run` for single pass. `fileParallelism: false` — tests run serially.
 - **Running files**: Use `npx tsx` for TypeScript.
+- **DB access**: `getDatabase()` returns a synchronous `better-sqlite3` instance. All operations are sync.
+- **Async operations**: Replay engine is async (`runReplay()` returns a Promise). Use `parseAsync()` for CLI commands.
