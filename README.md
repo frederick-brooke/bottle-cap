@@ -1,6 +1,6 @@
 # Bottle-Cap
 
-Incident replay tool — capture production HTTP traffic via proxy, store it, replay against staging to verify fixes before deployment.
+Incident replay tool - capture production HTTP traffic via proxy, store it, replay against staging to verify fixes before deployment.
 
 ## How It Works
 
@@ -189,7 +189,3 @@ src/
 ├── web/          # Reusable React components
 └── app/          # Next.js pages + dashboard API routes
 ```
-
-## License
-
-ISC
